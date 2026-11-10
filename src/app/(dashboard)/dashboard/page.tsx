@@ -179,6 +179,21 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Cloud Database Alert Notice if running without external DB */}
+        {data && data.databaseConnected === false && (
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-semibold text-amber-950">
+                Cloud Database Notice (Preview Mode)
+              </p>
+              <p className="text-amber-800">
+                The application is running in serverless preview mode. To persist live documents permanently in production, connect your PostgreSQL database (e.g. Neon or Supabase) by setting the <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold text-amber-950">DATABASE_URL</code> environment variable in your Vercel Project Settings.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Primary Financial Metric Cards */}
         {loading || !data ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

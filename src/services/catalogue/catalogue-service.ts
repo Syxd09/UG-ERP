@@ -15,25 +15,33 @@ export const productServiceSchema = z.object({
 export type ProductServiceFormData = z.infer<typeof productServiceSchema>;
 
 export async function getProductsServices(category?: string, search?: string) {
-  const where: any = { isActive: true };
-
-  if (category && category !== "ALL") {
-    where.category = category;
+  if (!process.env.DATABASE_URL) {
+    return [];
   }
+  try {
+    const where: any = { isActive: true };
 
-  if (search && search.trim() !== "") {
-    const q = search.trim();
-    where.OR = [
-      { name: { contains: q, mode: "insensitive" } },
-      { description: { contains: q, mode: "insensitive" } },
-      { hsnSac: { contains: q, mode: "insensitive" } },
-    ];
+    if (category && category !== "ALL") {
+      where.category = category;
+    }
+
+    if (search && search.trim() !== "") {
+      const q = search.trim();
+      where.OR = [
+        { name: { contains: q, mode: "insensitive" } },
+        { description: { contains: q, mode: "insensitive" } },
+        { hsnSac: { contains: q, mode: "insensitive" } },
+      ];
+    }
+
+    return await prisma.productService.findMany({
+      where,
+      orderBy: [{ category: "asc" }, { name: "asc" }],
+    });
+  } catch (error) {
+    console.error("Error in getProductsServices:", error);
+    return [];
   }
-
-  return prisma.productService.findMany({
-    where,
-    orderBy: [{ category: "asc" }, { name: "asc" }],
-  });
 }
 
 export async function createProductService(data: ProductServiceFormData) {

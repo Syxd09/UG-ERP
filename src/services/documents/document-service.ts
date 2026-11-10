@@ -78,6 +78,10 @@ export async function getDocuments(filter: {
   customerId?: string;
   search?: string;
 }) {
+  if (!process.env.DATABASE_URL) {
+    return [];
+  }
+
   const where: any = {};
 
   if (filter.type) {
@@ -112,6 +116,10 @@ export async function getDocuments(filter: {
 }
 
 export async function getDocumentById(id: string) {
+  if (!process.env.DATABASE_URL) {
+    return null;
+  }
+
   return prisma.document.findUnique({
     where: { id },
     include: {

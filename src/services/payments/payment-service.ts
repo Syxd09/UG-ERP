@@ -18,6 +18,10 @@ export async function getPayments(filter?: {
   method?: PaymentMethod;
   search?: string;
 }) {
+  if (!process.env.DATABASE_URL) {
+    return [];
+  }
+
   const where: any = {};
   if (filter?.method) {
     where.paymentMethod = filter.method;

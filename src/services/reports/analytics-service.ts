@@ -2,6 +2,27 @@ import prisma from "@/lib/db";
 import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
 
 export async function getFinancialReports() {
+  if (!process.env.DATABASE_URL) {
+    return {
+      totalDocuments: 0,
+      totalQuotations: 0,
+      totalProformas: 0,
+      totalTaxInvoices: 0,
+      totalBilledRevenue: 0,
+      totalTaxableValue: 0,
+      totalCgstCollected: 0,
+      totalSgstCollected: 0,
+      totalIgstCollected: 0,
+      totalGstCollected: 0,
+      totalAmountReceived: 0,
+      outstandingAmount: 0,
+      overdueAmount: 0,
+      monthlyTrends: [],
+      customerReceivables: [],
+      databaseConnected: false,
+    };
+  }
+
   // 1. Fetch all documents
   const allDocs = await prisma.document.findMany({
     include: {

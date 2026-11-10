@@ -24,66 +24,82 @@ export const customerSchema = z.object({
 export type CustomerFormData = z.infer<typeof customerSchema>;
 
 export async function getCustomers(search?: string) {
-  const where: any = { isActive: true };
-  if (search && search.trim() !== "") {
-    const q = search.trim();
-    where.OR = [
-      { companyName: { contains: q, mode: "insensitive" } },
-      { contactPerson: { contains: q, mode: "insensitive" } },
-      { email: { contains: q, mode: "insensitive" } },
-      { phone: { contains: q, mode: "insensitive" } },
-      { gstin: { contains: q, mode: "insensitive" } },
-    ];
+  if (!process.env.DATABASE_URL) {
+    return [];
   }
+  try {
+    const where: any = { isActive: true };
+    if (search && search.trim() !== "") {
+      const q = search.trim();
+      where.OR = [
+        { companyName: { contains: q, mode: "insensitive" } },
+        { contactPerson: { contains: q, mode: "insensitive" } },
+        { email: { contains: q, mode: "insensitive" } },
+        { phone: { contains: q, mode: "insensitive" } },
+        { gstin: { contains: q, mode: "insensitive" } },
+      ];
+    }
 
-  const customers = await prisma.customer.findMany({
-    where,
-    orderBy: { companyName: "asc" },
-    include: {
-      documents: {
-        select: {
-          id: true,
-          documentType: true,
-          status: true,
-          totalAmount: true,
-          amountReceived: true,
-          balanceDue: true,
-        },
-      },
-    },
-  });
-
-  return customers.map((c) => {
-    // Only calculate billed and receivables from TAX_INVOICE (actual legal billing)
-    const taxInvoices = c.documents.filter((d) => d.documentType === "TAX_INVOICE" && d.status !== "CANCELLED");
-    const totalBilled = taxInvoices.reduce((acc, d) => acc + Number(d.totalAmount), 0);
-    const totalReceived = taxInvoices.reduce((acc, d) => acc + Number(d.amountReceived), 0);
-    const balanceDue = taxInvoices.reduce((acc, d) => acc + Number(d.balanceDue), 0);
-
-    return {
-      ...c,
-      totalBilled,
-      totalReceived,
-      balanceDue,
-      documentsCount: c.documents.length,
-    };
-  });
-}
-
-export async function getCustomerById(id: string) {
-  return prisma.customer.findUnique({
-    where: { id },
-    include: {
-      documents: {
-        orderBy: { issueDate: "desc" },
-        include: {
-          payments: {
-            orderBy: { paymentDate: "desc" },
+    const customers = await prisma.customer.findMany({
+      where,
+      orderBy: { companyName: "asc" },
+      include: {
+        documents: {
+          select: {
+            id: true,
+            documentType: true,
+            status: true,
+            totalAmount: true,
+            amountReceived: true,
+            balanceDue: true,
           },
         },
       },
-    },
-  });
+    });
+
+    return customers.map((c) => {
+      // Only calculate billed and receivables from TAX_INVOICE (actual legal billing)
+      const taxInvoices = c.documents.filter((d) => d.documentType === "TAX_INVOICE" && d.status !== "CANCELLED");
+      const totalBilled = taxInvoices.reduce((acc, d) => acc + Number(d.totalAmount), 0);
+      const totalReceived = taxInvoices.reduce((acc, d) => acc + Number(d.amountReceived), 0);
+      const balanceDue = taxInvoices.reduce((acc, d) => acc + Number(d.balanceDue), 0);
+
+      return {
+        ...c,
+        totalBilled,
+        totalReceived,
+        balanceDue,
+        documentsCount: c.documents.length,
+      };
+    });
+  } catch (error) {
+    console.error("Error in getCustomers:", error);
+    return [];
+  }
+}
+
+export async function getCustomerById(id: string) {
+  if (!process.env.DATABASE_URL) {
+    return null;
+  }
+  try {
+    return await prisma.customer.findUnique({
+      where: { id },
+      include: {
+        documents: {
+          orderBy: { issueDate: "desc" },
+          include: {
+            payments: {
+              orderBy: { paymentDate: "desc" },
+            },
+          },
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error in getCustomerById:", error);
+    return null;
+  }
 }
 
 export async function createCustomer(data: CustomerFormData) {
