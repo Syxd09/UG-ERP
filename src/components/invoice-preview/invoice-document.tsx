@@ -104,26 +104,26 @@ interface PageSlice {
  * Calculates visual vertical weight of an item based on its length and specifications
  */
 function getItemWeight(item: CalculatedItem): number {
-  let weight = 44; // Standard row with name, qty, unit, rate, amount
+  let weight = 36; // Base row with name, qty, unit, rate, amount
   if (item.description && item.description.trim().length > 0) {
     const chars = item.description.trim().length;
-    weight += Math.min(60, Math.ceil(chars / 65) * 16);
+    weight += Math.max(16, Math.ceil(chars / 65) * 14);
   }
   if (item.dimensions || item.specifications) {
-    weight += 28;
+    weight += 24;
   }
   return weight;
 }
 
 /**
  * High-precision A4 multi-page pagination algorithm
- * Divides line items and summaries across physical A4 sheets so no content is ever clipped.
+ * Maximizes space utilization on Page 1 before overflowing to continuation sheets.
  */
 function paginateInvoiceItems(items: CalculatedItem[]): PageSlice[] {
-  const SINGLE_PAGE_MAX_WEIGHT = 110; // Max items weight that can fit on Page 1 alongside commercial summary
-  const PAGE1_BUDGET = 420; // Maximum items budget on Page 1 when multi-page
-  const CONTINUATION_BUDGET = 720; // Maximum items budget on continuation pages (no customer/header block)
-  const LAST_PAGE_BUDGET_WITH_SUMMARY = 340; // Maximum items budget on the final page alongside commercial summary
+  const SINGLE_PAGE_MAX_WEIGHT = 150; // Max items weight that can fit on Page 1 alongside commercial summary
+  const PAGE1_BUDGET = 620; // Full printable items budget on Page 1 when multi-page
+  const CONTINUATION_BUDGET = 860; // Maximum items budget on continuation pages
+  const LAST_PAGE_BUDGET_WITH_SUMMARY = 420; // Maximum items budget on the final page alongside commercial summary
 
   if (!items || items.length === 0) {
     return [
@@ -195,9 +195,9 @@ function paginateInvoiceItems(items: CalculatedItem[]): PageSlice[] {
         break;
       }
 
-      // If multi-page and we are filling a page that won't be the final summary page,
-      // leave at least 2 items for the subsequent page so it's never an orphan summary page
-      if (itemsLeftAfterThis < 2 && remainingWeight > LAST_PAGE_BUDGET_WITH_SUMMARY) {
+      // If multi-page, ensure we leave at least 1 item for the final summary sheet
+      // so the final sheet is never an orphan sheet with zero items!
+      if (itemsLeftAfterThis < 1) {
         break;
       }
 
@@ -236,7 +236,6 @@ function paginateInvoiceItems(items: CalculatedItem[]): PageSlice[] {
     });
   }
 
-  // Fix total pages references
   return pages;
 }
 
