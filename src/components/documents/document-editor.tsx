@@ -31,6 +31,7 @@ import {
   InvoiceDocumentData,
 } from "@/components/invoice-preview/invoice-document";
 import { PreviewControls } from "@/components/invoice-preview/preview-controls";
+import { printInvoiceDocument } from "@/lib/print-utils";
 
 interface CustomerOption {
   id: string;
@@ -456,15 +457,15 @@ export function DocumentEditor({
   };
 
   const handlePrint = () => {
-    window.print();
+    printInvoiceDocument("printable-invoice-sheet");
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] overflow-hidden bg-slate-100">
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] overflow-hidden bg-slate-100 print:h-auto print:overflow-visible print:bg-white">
       {/* ========================================================
           LEFT SIDE: DOCUMENT EDITOR PANEL (Scrollable)
       ======================================================== */}
-      <div className="w-full lg:w-1/2 h-full overflow-y-auto p-4 sm:p-6 border-r border-slate-200 bg-white editor-panel">
+      <div className="w-full lg:w-1/2 h-full overflow-y-auto p-4 sm:p-6 border-r border-slate-200 bg-white editor-panel print:hidden">
         <div className="space-y-6 max-w-2xl mx-auto pb-16">
           {/* Top Document Header Controls */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-200">
@@ -1070,7 +1071,7 @@ export function DocumentEditor({
       {/* ========================================================
           RIGHT SIDE: REAL-TIME LIVE A4 PREVIEW PANEL
       ======================================================== */}
-      <div className="w-full lg:w-1/2 h-full flex flex-col bg-slate-200/70 overflow-hidden">
+      <div className="w-full lg:w-1/2 h-full flex flex-col bg-slate-200/70 overflow-hidden print:w-full print:h-auto print:bg-white print:overflow-visible">
         {/* Preview Toolbar */}
         <PreviewControls
           zoom={zoom}
@@ -1079,12 +1080,13 @@ export function DocumentEditor({
           onResetZoom={() => setZoom(0.85)}
           onPrint={handlePrint}
           title={`${docType.replace(/_/g, " ")}: ${customerName || "Untitled"}`}
+          documentNumber={documentNumber || `${docType}_preview`}
         />
 
         {/* Live A4 Canvas Container */}
-        <div className="flex-1 overflow-auto p-4 sm:p-8 flex justify-center items-start print:p-0 print:m-0 print:overflow-visible">
+        <div className="flex-1 overflow-auto p-4 sm:p-8 flex justify-center items-start print:p-0 print:m-0 print:overflow-visible print:w-full">
           <div
-            className="transition-transform origin-top print:transform-none"
+            className="transition-transform origin-top print:!transform-none print:m-0 print:p-0"
             style={{ transform: `scale(${zoom})` }}
           >
             <div className="print-container">
@@ -1096,3 +1098,4 @@ export function DocumentEditor({
     </div>
   );
 }
+

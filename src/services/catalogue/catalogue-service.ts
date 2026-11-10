@@ -75,3 +75,4 @@ export async function deleteProductService(id: string) {
     data: { isActive: false },
   });
 }
+

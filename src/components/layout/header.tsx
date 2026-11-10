@@ -29,7 +29,7 @@ export function Header() {
   const segments = pathname.split("/").filter(Boolean);
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-20 app-header">
+    <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-20 app-header print:hidden">
       {/* Breadcrumbs */}
       <div className="flex items-center space-x-2 text-xs text-slate-500">
         <Link
@@ -189,3 +189,4 @@ export function Header() {
     </header>
   );
 }
+

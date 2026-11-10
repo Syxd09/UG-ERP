@@ -32,6 +32,7 @@ import {
 } from "@/components/invoice-preview/invoice-document";
 import { PreviewControls } from "@/components/invoice-preview/preview-controls";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { printInvoiceDocument } from "@/lib/print-utils";
 
 export default function DocumentDetailPage({
   params,
@@ -381,7 +382,7 @@ export default function DocumentDetailPage({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => window.print()}
+              onClick={() => printInvoiceDocument("printable-invoice-sheet")}
               className="gap-1.5 text-xs h-8"
             >
               <Printer className="w-3.5 h-3.5 text-slate-600" />
@@ -486,12 +487,13 @@ export default function DocumentDetailPage({
             onZoomIn={() => setZoom((z) => Math.min(1.4, z + 0.1))}
             onZoomOut={() => setZoom((z) => Math.max(0.5, z - 0.1))}
             onResetZoom={() => setZoom(0.9)}
-            onPrint={() => window.print()}
+            onPrint={() => printInvoiceDocument("printable-invoice-sheet")}
             title={`${doc.documentType}: ${doc.documentNumber}`}
+            documentNumber={doc.documentNumber}
           />
 
           <div
-            className="transition-transform origin-top print:transform-none mt-4"
+            className="transition-transform origin-top print:!transform-none print:m-0 print:p-0 mt-4"
             style={{ transform: `scale(${zoom})` }}
           >
             <div className="print-container">
@@ -627,3 +629,4 @@ export default function DocumentDetailPage({
     </AppShell>
   );
 }
+

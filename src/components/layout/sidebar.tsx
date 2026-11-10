@@ -59,7 +59,7 @@ export function Sidebar() {
   const [documentsOpen, setDocumentsOpen] = useState(true);
 
   return (
-    <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col h-screen sticky top-0 text-slate-300 select-none z-30 app-sidebar">
+    <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col h-screen sticky top-0 text-slate-300 select-none z-30 app-sidebar print:hidden">
       {/* Brand Header */}
       <div className="h-16 px-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
         <Link href="/dashboard" className="flex items-center gap-2.5 group">
@@ -193,3 +193,4 @@ export function Sidebar() {
     </aside>
   );
 }
+

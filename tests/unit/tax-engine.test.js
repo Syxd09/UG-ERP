@@ -170,3 +170,4 @@ test("GST-Inclusive item calculates taxable and tax correctly from gross total",
   assert.strictEqual(result.totalTax, 180.00);
   assert.strictEqual(result.finalAmount, 1180.00);
 });
+

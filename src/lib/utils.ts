@@ -104,3 +104,4 @@ export function numberToWordsINR(amount: number | string | null | undefined): st
 
   return result.trim() + " Only";
 }
+

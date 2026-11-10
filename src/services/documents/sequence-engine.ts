@@ -62,3 +62,4 @@ export async function getNextDocumentNumber(
   const paddedNum = String(nextNumber).padStart(4, "0");
   return `${prefix}/${fyShort}/${paddedNum}`;
 }
+

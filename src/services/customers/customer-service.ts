@@ -144,3 +144,4 @@ export async function deleteCustomer(id: string) {
     data: { isActive: false },
   });
 }
+

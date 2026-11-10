@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Printer,
@@ -7,9 +8,11 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
-  Maximize2,
   FileText,
+  Loader2,
 } from "lucide-react";
+import { exportDocumentToPdf } from "@/lib/pdf-export";
+import { printInvoiceDocument } from "@/lib/print-utils";
 
 interface PreviewControlsProps {
   zoom: number;
@@ -18,6 +21,8 @@ interface PreviewControlsProps {
   onResetZoom: () => void;
   onPrint: () => void;
   title?: string;
+  documentNumber?: string;
+  targetElementId?: string;
 }
 
 export function PreviewControls({
@@ -27,7 +32,24 @@ export function PreviewControls({
   onResetZoom,
   onPrint,
   title,
+  documentNumber = "invoice",
+  targetElementId = "printable-invoice-sheet",
 }: PreviewControlsProps) {
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    try {
+      setDownloading(true);
+      const safeFilename = `${documentNumber.replace(/[\/\\]/g, "_")}.pdf`;
+      await exportDocumentToPdf(targetElementId, safeFilename);
+    } catch (err) {
+      console.error("PDF download failed, falling back to window.print()", err);
+      window.print();
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className="bg-white border-b border-slate-200 px-4 py-2.5 flex items-center justify-between shadow-sm sticky top-0 z-20 preview-toolbar">
       <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
@@ -70,25 +92,37 @@ export function PreviewControls({
           </button>
         </div>
 
-        {/* Print / Download Button */}
+        {/* Browser Print Button */}
         <Button
           size="sm"
           variant="outline"
           className="gap-1.5 text-xs h-8"
-          onClick={onPrint}
+          onClick={() => {
+            if (onPrint) {
+              onPrint();
+            } else {
+              printInvoiceDocument(targetElementId);
+            }
+          }}
         >
           <Printer className="w-3.5 h-3.5 text-slate-600" />
           <span>Print</span>
         </Button>
 
+        {/* Direct Vector PDF File Download Button */}
         <Button
           size="sm"
           variant="brand"
           className="gap-1.5 text-xs h-8"
-          onClick={onPrint}
+          disabled={downloading}
+          onClick={handleDownloadPdf}
         >
-          <Download className="w-3.5 h-3.5" />
-          <span>Save as PDF</span>
+          {downloading ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Download className="w-3.5 h-3.5" />
+          )}
+          <span>{downloading ? "Generating PDF..." : "Download PDF"}</span>
         </Button>
       </div>
     </div>
