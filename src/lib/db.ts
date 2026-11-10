@@ -19,6 +19,10 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 export function isDatabaseConfigured(): boolean {
   const url = process.env.DATABASE_URL;
   if (!url || url.trim() === "") return false;
+  // Must be a valid PostgreSQL connection string (not an HTTPS web URL)
+  if (!url.startsWith("postgresql://") && !url.startsWith("postgres://")) {
+    return false;
+  }
   if (process.env.VERCEL === "1" && (url.includes("localhost") || url.includes("127.0.0.1"))) {
     return false;
   }
