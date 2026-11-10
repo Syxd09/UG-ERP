@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { createClient as createSupabaseMiddlewareClient } from "@/utils/supabase/middleware";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -13,9 +14,19 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/api/share") ||
     pathname.startsWith("/share") ||
     pathname === "/login" ||
+    pathname === "/todos" ||
     pathname === "/favicon.ico"
   ) {
     return NextResponse.next();
+  }
+
+  // Refresh Supabase session cookies if configured
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) {
+    try {
+      createSupabaseMiddlewareClient(req);
+    } catch {
+      // Supabase session refresh non-blocking
+    }
   }
 
   // 2. Check for active NextAuth session token
