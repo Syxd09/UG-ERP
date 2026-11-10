@@ -24,7 +24,10 @@ const fallbackReports = {
 
 export async function getFinancialReports() {
   if (!isDatabaseConfigured()) {
-    return fallbackReports;
+    return {
+      ...fallbackReports,
+      dbError: "Database is not configured or URL is invalid",
+    };
   }
 
   try {
@@ -145,9 +148,12 @@ export async function getFinancialReports() {
       gstBreakdown,
       databaseConnected: true,
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Database query failed in getFinancialReports:", error);
-    return fallbackReports;
+    return {
+      ...fallbackReports,
+      dbError: error?.message || String(error),
+    };
   }
 }
 
