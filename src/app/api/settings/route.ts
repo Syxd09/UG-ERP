@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma, { isDatabaseConfigured } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const defaultCompanyProfile = {
   id: "default-ug-company",
   name: "Ultimate Graphics",

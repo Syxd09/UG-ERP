@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDocuments, createDocument } from "@/services/documents/document-service";
 import { DocumentType, DocumentStatus } from "@prisma/client";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
