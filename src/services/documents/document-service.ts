@@ -691,3 +691,146 @@ export async function convertDocument(sourceDocId: string, targetType: DocumentT
     return targetDoc;
   });
 }
+
+export async function duplicateDocument(sourceDocId: string) {
+  return await prisma.$transaction(async (tx) => {
+    const source = await tx.document.findUnique({
+      where: { id: sourceDocId },
+      include: {
+        items: true,
+        taxSummaries: true,
+      },
+    });
+
+    if (!source) {
+      throw new Error("Source document not found");
+    }
+
+    // Generate a fresh sequential number for the copy
+    const newDocNumber = await getNextDocumentNumber(source.documentType);
+
+    const copyDoc = await tx.document.create({
+      data: {
+        documentType: source.documentType,
+        documentNumber: newDocNumber,
+        status: DocumentStatus.DRAFT,
+        isLocked: false,
+        issueDate: new Date(),
+        dueDate: source.dueDate,
+        validityDate: source.validityDate,
+        referenceNo: source.referenceNo ? `${source.referenceNo} (Copy)` : undefined,
+        projectRef: source.projectRef,
+        projectName: source.projectName,
+        projectLocation: source.projectLocation,
+        siteAddress: source.siteAddress,
+
+        customerId: source.customerId,
+        customerName: source.customerName,
+        customerContactPerson: source.customerContactPerson,
+        customerEmail: source.customerEmail,
+        customerPhone: source.customerPhone,
+        customerGstin: source.customerGstin,
+        customerBillingAddress: source.customerBillingAddress,
+        customerShippingAddress: source.customerShippingAddress,
+        placeOfSupplyState: source.placeOfSupplyState,
+        placeOfSupplyCode: source.placeOfSupplyCode,
+        isInterState: source.isInterState,
+
+        subtotal: source.subtotal,
+        discountType: source.discountType,
+        discountValue: source.discountValue,
+        discountAmount: source.discountAmount,
+        taxableAmount: source.taxableAmount,
+        cgstAmount: source.cgstAmount,
+        sgstAmount: source.sgstAmount,
+        igstAmount: source.igstAmount,
+        totalTaxAmount: source.totalTaxAmount,
+        roundOff: source.roundOff,
+        totalAmount: source.totalAmount,
+
+        advancePercentage: source.advancePercentage,
+        advanceAmount: source.advanceAmount,
+        amountReceived: 0,
+        balanceDue: source.totalAmount,
+
+        paymentTerms: source.paymentTerms,
+        notes: source.notes,
+        termsAndConditions: source.termsAndConditions,
+
+        companySnapshot: (source.companySnapshot || undefined) as any,
+        bankSnapshot: (source.bankSnapshot || undefined) as any,
+        upiSnapshot: (source.upiSnapshot || undefined) as any,
+
+        items: {
+          create: source.items.map((it) => ({
+            name: it.name,
+            description: it.description,
+            hsnSac: it.hsnSac,
+            unit: it.unit,
+            dimensions: it.dimensions,
+            specifications: it.specifications,
+            quantity: it.quantity,
+            unitRate: it.unitRate,
+            discountType: it.discountType,
+            discountValue: it.discountValue,
+            discountAmount: it.discountAmount,
+            gstRate: it.gstRate,
+            isGstInclusive: it.isGstInclusive,
+            taxableAmount: it.taxableAmount,
+            cgstRate: it.cgstRate,
+            cgstAmount: it.cgstAmount,
+            sgstRate: it.sgstRate,
+            sgstAmount: it.sgstAmount,
+            igstRate: it.igstRate,
+            igstAmount: it.igstAmount,
+            totalTax: it.totalTax,
+            finalAmount: it.finalAmount,
+            sortOrder: it.sortOrder,
+          })),
+        },
+
+        taxSummaries: {
+          create: source.taxSummaries.map((ts) => ({
+            hsnSac: ts.hsnSac,
+            gstRate: ts.gstRate,
+            taxableAmount: ts.taxableAmount,
+            cgstAmount: ts.cgstAmount,
+            sgstAmount: ts.sgstAmount,
+            igstAmount: ts.igstAmount,
+            totalTax: ts.totalTax,
+          })),
+        },
+      },
+    });
+
+    return copyDoc;
+  });
+}
+
+export async function deleteDraftDocument(id: string) {
+  const doc = await prisma.document.findUnique({
+    where: { id },
+  });
+
+  if (!doc) {
+    throw new Error("Document not found");
+  }
+
+  if (doc.status !== DocumentStatus.DRAFT || doc.isLocked) {
+    throw new Error(
+      "Only unfinalized draft documents can be deleted. Issued or finalized documents must be cancelled to preserve financial audit compliance."
+    );
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    await tx.documentItem.deleteMany({ where: { documentId: id } });
+    await tx.documentTaxSummary.deleteMany({ where: { documentId: id } });
+    await tx.payment.deleteMany({ where: { documentId: id } });
+    await tx.documentConversion.deleteMany({
+      where: {
+        OR: [{ sourceDocumentId: id }, { targetDocumentId: id }],
+      },
+    });
+    return await tx.document.delete({ where: { id } });
+  });
+}

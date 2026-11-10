@@ -110,7 +110,7 @@ function getItemWeight(item: CalculatedItem): number {
     weight += Math.max(16, Math.ceil(chars / 65) * 14);
   }
   if (item.dimensions || item.specifications) {
-    weight += 24;
+    weight += 18;
   }
   return weight;
 }
@@ -324,15 +324,6 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
             <div className="absolute top-0 right-0 w-80 h-2 bg-gradient-to-r from-cyan-400 via-rose-500 to-orange-400" />
             <div className="absolute top-0 left-0 w-32 h-1.5 bg-gradient-to-r from-cyan-400 to-cyan-500" />
 
-            {/* Visual Page Indicator for On-Screen Editing Canvas */}
-            {isMultiPage && (
-              <div className="absolute top-3 right-5 print:hidden">
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
-                  Page {page.pageNumber} of {totalPages}
-                </span>
-              </div>
-            )}
-
             {/* MAIN DOCUMENT BODY */}
             <div>
               {/* =========================================================
@@ -344,7 +335,7 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                     <div>
                       {/* Authentic Brand Header with Circular Monogram & Official High-Contrast Logo */}
                       <div className="flex items-center gap-3.5 mb-2">
-                        <div className="w-12 h-12 rounded-xl overflow-hidden ring-1 ring-slate-900/10 shadow-sm shrink-0 bg-slate-950 flex items-center justify-center">
+                        <div className="w-12 h-12 overflow-hidden border border-slate-900 shrink-0 bg-slate-950 flex items-center justify-center">
                           <Image
                             src="/logos/symbol-logo.jpeg"
                             alt="UG Emblem"
@@ -388,9 +379,9 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                           <span>{company.email}</span>
                         </div>
                         {company.gstin && (
-                          <div className="pt-1 flex items-center gap-1.5">
+                          <div className="pt-1 flex items-center gap-1.5 text-[11px]">
                             <span className="font-bold text-slate-900">GSTIN:</span>
-                            <span className="font-mono font-bold tracking-wider text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">
+                            <span className="font-mono font-bold tracking-wider text-slate-950">
                               {company.gstin}
                             </span>
                           </div>
@@ -404,7 +395,7 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                         <h1 className="text-2xl font-black tracking-wider text-slate-950 uppercase">
                           {docTitle}
                         </h1>
-                        <div className="h-1 w-full bg-gradient-to-r from-cyan-400 via-rose-500 to-orange-400 mt-1 rounded-full" />
+                        <div className="h-0.5 w-full bg-gradient-to-r from-cyan-400 via-rose-500 to-orange-400 mt-1" />
                       </div>
 
                       <div className="mt-3 text-xs space-y-1 font-medium">
@@ -412,7 +403,7 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                           <span className="text-slate-500">
                             {isQuotation ? "Quotation No:" : isTaxInvoice ? "Invoice No:" : "Proforma No:"}
                           </span>
-                          <span className="font-mono font-bold text-slate-950 text-sm bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                          <span className="font-mono font-bold text-slate-950 text-sm">
                             {data.documentNumber || "DRAFT"}
                           </span>
                         </div>
@@ -456,13 +447,13 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                   </div>
 
                   {/* BILLED TO / SHIPPED TO / PROJECT INFORMATION */}
-                  <div className="grid grid-cols-2 gap-5 py-3 text-xs border-b border-slate-200">
-                    <div className="bg-slate-50/70 p-3 rounded-lg border border-slate-200/80">
-                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <div className="grid grid-cols-2 gap-8 py-3 text-xs border-b border-slate-200">
+                    <div className="pr-4 border-r border-slate-200">
+                      <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
                         <span>Billed To</span>
                         {data.customerGstin && (
-                          <span className="text-slate-500 font-mono">
-                            Code: {data.placeOfSupplyCode}
+                          <span className="text-slate-400 font-mono text-[9px]">
+                            State Code: {data.placeOfSupplyCode}
                           </span>
                         )}
                       </div>
@@ -482,17 +473,17 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                         {data.customerEmail && <span>{data.customerEmail}</span>}
                       </div>
                       {data.customerGstin && (
-                        <div className="mt-1.5 text-slate-900 font-bold flex items-center gap-1.5">
-                          <span className="text-slate-600 font-medium text-[11px]">GSTIN:</span>
-                          <span className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                        <div className="mt-1.5 text-slate-900 flex items-center gap-1.5 text-[11px]">
+                          <span className="text-slate-500 font-medium">GSTIN:</span>
+                          <span className="font-mono font-bold tracking-wide">
                             {data.customerGstin}
                           </span>
                         </div>
                       )}
                     </div>
 
-                    <div className="bg-slate-50/70 p-3 rounded-lg border border-slate-200/80">
-                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    <div className="pl-2">
+                      <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                         Project Execution & Site Installation
                       </div>
                       {data.projectName ? (
@@ -500,18 +491,19 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                           {data.projectName}
                         </div>
                       ) : (
-                        <div className="text-slate-500 italic">Signage & Branding Works</div>
+                        <div className="text-slate-400 italic">Signage & Branding Works</div>
                       )}
 
                       {data.projectLocation && (
                         <div className="text-slate-700 mt-0.5 text-[11px]">
-                          Location: <span className="font-semibold text-slate-900">{data.projectLocation}</span>
+                          <span className="text-slate-500 font-medium">Location: </span>
+                          <span className="font-semibold text-slate-900">{data.projectLocation}</span>
                         </div>
                       )}
 
                       {data.siteAddress && (
                         <div className="text-slate-600 mt-1 leading-relaxed text-[11px]">
-                          <span className="font-semibold text-slate-700">Site Address: </span>
+                          <span className="text-slate-500 font-medium">Site Address: </span>
                           {data.siteAddress}
                         </div>
                       )}
@@ -519,7 +511,7 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                       {data.customerShippingAddress &&
                         data.customerShippingAddress !== data.customerBillingAddress && (
                           <div className="text-slate-600 mt-1 leading-relaxed text-[11px]">
-                            <span className="font-semibold text-slate-700">Dispatch / Material Delivery: </span>
+                            <span className="text-slate-500 font-medium">Dispatch: </span>
                             {data.customerShippingAddress}
                           </div>
                         )}
@@ -532,7 +524,7 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                    ========================================================= */
                 <div className="pb-3 mb-3 border-b border-slate-200 flex justify-between items-center">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg overflow-hidden ring-1 ring-slate-900/10 shadow-sm shrink-0 bg-slate-950 flex items-center justify-center">
+                    <div className="w-10 h-10 overflow-hidden border border-slate-900 shrink-0 bg-slate-950 flex items-center justify-center">
                       <Image
                         src="/logos/symbol-logo.jpeg"
                         alt="UG Emblem"
@@ -546,7 +538,7 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                       <div className="font-bold text-slate-950 text-xs tracking-tight flex items-center gap-2">
                         <span>ULTIMATE GRAPHICS</span>
                         <span className="text-slate-300">•</span>
-                        <span className="font-mono text-cyan-800 font-bold">
+                        <span className="font-mono text-slate-950 font-bold">
                           {data.documentNumber || "DRAFT"}
                         </span>
                         <span className="text-slate-300">•</span>
@@ -579,7 +571,7 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-950 text-white text-[10px] font-bold uppercase tracking-wider">
-                      <th className="py-2 pl-3 pr-2 w-8 text-center rounded-l">#</th>
+                      <th className="py-2 pl-3 pr-2 w-8 text-center">#</th>
                       <th className="py-2 px-2">Scope of Works & Specifications</th>
                       <th className="py-2 px-2 text-center w-16">HSN/SAC</th>
                       <th className="py-2 px-2 text-center w-14">Qty</th>
@@ -588,7 +580,7 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                       {isTaxInvoice && (
                         <th className="py-2 px-2 text-center w-14">GST</th>
                       )}
-                      <th className="py-2 pr-3 pl-2 text-right w-24 rounded-r">Amount (₹)</th>
+                      <th className="py-2 pr-3 pl-2 text-right w-24">Amount (₹)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-xs">
@@ -619,15 +611,15 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                                 </div>
                               )}
                               {(it.dimensions || it.specifications) && (
-                                <div className="text-[9px] text-slate-600 mt-1 bg-slate-50 p-1.5 rounded border border-slate-200/60 flex flex-wrap gap-x-3">
+                                <div className="text-[10px] text-slate-600 mt-1 flex flex-wrap gap-x-4">
                                   {it.dimensions && (
                                     <span>
-                                      <strong className="text-slate-800">Dim:</strong> {it.dimensions}
+                                      <span className="font-semibold text-slate-700">Dim:</span> {it.dimensions}
                                     </span>
                                   )}
                                   {it.specifications && (
                                     <span>
-                                      <strong className="text-slate-800">Specs:</strong> {it.specifications}
+                                      <span className="font-semibold text-slate-700">Specs:</span> {it.specifications}
                                     </span>
                                   )}
                                 </div>
@@ -663,11 +655,11 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
 
               {/* Continuation Notice at bottom of table if more items follow */}
               {!page.isLastPage && (
-                <div className="mt-2 p-2 bg-slate-50 rounded border border-slate-200 flex items-center justify-between text-xs text-slate-600">
-                  <span className="font-semibold text-cyan-800 flex items-center gap-1.5">
-                    <span>Continued on Sheet {page.pageNumber + 1}...</span>
+                <div className="mt-2 py-1.5 border-t border-b border-dashed border-slate-300 flex items-center justify-between text-[11px] text-slate-500">
+                  <span className="font-semibold text-slate-700 uppercase tracking-wider text-[10px]">
+                    — Continued on Sheet {page.pageNumber + 1} —
                   </span>
-                  <span className="text-[10px] font-mono text-slate-500">
+                  <span className="font-mono text-[10px] text-slate-500">
                     Displaying Items {page.startIndex + 1} to {page.startIndex + page.items.length} of {data.items.length}
                   </span>
                 </div>
@@ -682,8 +674,8 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                     {/* Left Column: Amount in Words & HSN Tax Summary */}
                     <div className="col-span-7 space-y-2.5">
                       {/* Amount in words */}
-                      <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <div className="border-b border-slate-200 pb-2">
+                        <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                           Total Invoice Amount in Words
                         </div>
                         <div className="font-bold text-slate-950 text-xs mt-0.5 leading-relaxed">
@@ -693,8 +685,8 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
 
                       {/* HSN/SAC Tax Summary Table */}
                       {(isTaxInvoice || (data.taxSummaries && data.taxSummaries.length > 0)) && (
-                        <div className="border border-slate-200 rounded-lg overflow-hidden">
-                          <div className="bg-slate-100 px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-800 flex justify-between">
+                        <div className="border border-slate-200">
+                          <div className="bg-slate-100 px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-800 flex justify-between border-b border-slate-200">
                             <span>GST Tax Breakdown (HSN / SAC Wise)</span>
                             <span className="font-mono text-[9px] text-slate-500">
                               {isInterState ? "Inter-State (IGST 100%)" : "Intra-State (CGST 50% + SGST 50%)"}
@@ -706,7 +698,7 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                                 <th className="py-1 px-2 font-bold">HSN/SAC</th>
                                 <th className="py-1 px-2 text-right font-bold">Taxable (₹)</th>
                                 {isInterState ? (
-                                  <th className="py-1 px-2 text-right font-bold">IGST (₹)</th>
+                                   <th className="py-1 px-2 text-right font-bold">IGST (₹)</th>
                                 ) : (
                                   <>
                                     <th className="py-1 px-2 text-right font-bold">CGST (₹)</th>
@@ -787,11 +779,11 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                       )}
 
                       {/* Total Grand Presentation */}
-                      <div className="mt-1 p-2.5 bg-slate-950 text-white rounded-lg flex justify-between items-center shadow-md">
+                      <div className="mt-2 py-2 px-3 bg-slate-950 text-white flex justify-between items-center">
                         <span className="font-black text-xs tracking-wider uppercase">
-                          Grand Total:
+                          Total Amount:
                         </span>
-                        <span className="font-mono font-black text-lg text-cyan-400">
+                        <span className="font-mono font-black text-base text-white">
                           {formatCurrency(data.totalAmount)}
                         </span>
                       </div>
@@ -825,18 +817,18 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                   {/* BANK DETAILS, UPI QR & TERMS SECTION */}
                   <div className="pt-2 border-t border-slate-200 grid grid-cols-12 gap-4 text-xs avoid-break">
                     {/* Bank & Payment Information */}
-                    <div className="col-span-8 flex gap-3.5 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <div className="col-span-8 flex gap-3.5 border border-slate-200 p-2.5">
                       {qrCodeUrl && (
-                        <div className="flex flex-col items-center justify-center p-1.5 bg-white rounded border border-slate-200 shrink-0 shadow-sm">
+                        <div className="flex flex-col items-center justify-center p-1 bg-white border border-slate-200 shrink-0">
                           <Image
                             src={qrCodeUrl}
                             alt="UPI Payment QR"
-                            width={76}
-                            height={76}
+                            width={72}
+                            height={72}
                             unoptimized
                             className="w-16 h-16 object-contain"
                           />
-                          <div className="text-[7px] font-black text-slate-700 uppercase tracking-widest mt-1">
+                          <div className="text-[7px] font-black text-slate-700 uppercase tracking-widest mt-0.5">
                             Scan to Pay
                           </div>
                         </div>
@@ -849,19 +841,19 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                         <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
                           <div>
                             <span className="text-slate-500">Bank: </span>
-                            <span className="font-bold text-slate-900">{bank.bankName}</span>
+                            <span className="font-bold text-slate-950">{bank.bankName}</span>
                           </div>
                           <div>
                             <span className="text-slate-500">A/C Holder: </span>
-                            <span className="font-semibold text-slate-900">{bank.accountHolder}</span>
+                            <span className="font-semibold text-slate-950">{bank.accountHolder}</span>
                           </div>
                           <div>
                             <span className="text-slate-500">A/C No: </span>
-                            <span className="font-mono font-bold text-slate-900">{bank.accountNumber}</span>
+                            <span className="font-mono font-bold text-slate-950">{bank.accountNumber}</span>
                           </div>
                           <div>
                             <span className="text-slate-500">IFSC: </span>
-                            <span className="font-mono font-bold text-slate-900">{bank.ifsc}</span>
+                            <span className="font-mono font-bold text-slate-950">{bank.ifsc}</span>
                           </div>
                           <div className="col-span-2 pt-0.5">
                             <span className="text-slate-500">Branch: </span>
@@ -870,7 +862,7 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                           {upi.upiId && (
                             <div className="col-span-2 pt-0.5 font-semibold text-slate-900">
                               <span className="text-slate-500">UPI ID: </span>
-                              <span className="font-mono text-cyan-700 font-bold">{upi.upiId}</span>
+                              <span className="font-mono text-slate-950 font-bold">{upi.upiId}</span>
                             </div>
                           )}
                         </div>
@@ -896,7 +888,7 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
                   </div>
 
                   {/* TERMS AND CONDITIONS */}
-                  <div className="pt-2 border-t border-slate-100 text-[9px] text-slate-500 leading-relaxed avoid-break">
+                  <div className="pt-2 border-t border-slate-200 text-[9px] text-slate-500 leading-relaxed avoid-break">
                     <div className="font-bold text-slate-700 uppercase tracking-wider mb-0.5">
                       Terms & Commercial Conditions:
                     </div>

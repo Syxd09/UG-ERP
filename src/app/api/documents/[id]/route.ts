@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getDocumentById,
   updateDocument,
+  deleteDraftDocument,
 } from "@/services/documents/document-service";
 
 export async function GET(
@@ -36,6 +37,21 @@ export async function PUT(
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error.message || "Failed to update document" },
+      { status: 400 }
+    );
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const result = await deleteDraftDocument(params.id);
+    return NextResponse.json({ success: true, data: result });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to delete document" },
       { status: 400 }
     );
   }

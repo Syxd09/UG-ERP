@@ -25,6 +25,9 @@ import {
   Calendar,
   X,
   AlertCircle,
+  Copy,
+  Trash2,
+  Check,
 } from "lucide-react";
 import {
   InvoiceDocument,
@@ -128,6 +131,55 @@ export default function DocumentDetailPage({
       fetchDoc();
     } catch {
       alert("Failed to cancel document");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const [copiedLink, setCopiedLink] = useState(false);
+  const handleShareLink = () => {
+    if (!doc) return;
+    const url = `${window.location.origin}/share/${doc.id}`;
+    navigator.clipboard.writeText(url);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const handleDuplicate = async () => {
+    if (!confirm("Create a duplicate copy of this document? A fresh sequential number will be generated.")) return;
+    try {
+      setActionLoading(true);
+      const res = await fetch(`/api/documents/${params.id}/duplicate`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        router.push(`/documents/${json.data.id}`);
+      } else {
+        alert(json.error || "Failed to duplicate document");
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to duplicate document");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteDraft = async () => {
+    if (!confirm("Are you sure you want to permanently delete this draft document? This action cannot be undone.")) return;
+    try {
+      setActionLoading(true);
+      const res = await fetch(`/api/documents/${params.id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (json.success) {
+        router.push("/documents");
+      } else {
+        alert(json.error || "Failed to delete draft document");
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to delete draft document");
     } finally {
       setActionLoading(false);
     }
@@ -382,6 +434,38 @@ export default function DocumentDetailPage({
             <Button
               size="sm"
               variant="outline"
+              onClick={handleDuplicate}
+              disabled={actionLoading}
+              className="gap-1.5 text-xs h-8 text-slate-700"
+              title="Duplicate this document with a new number"
+            >
+              <Copy className="w-3.5 h-3.5 text-slate-500" />
+              <span>Duplicate</span>
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleShareLink}
+              className="gap-1.5 text-xs h-8 text-slate-700"
+              title="Copy public client portal link"
+            >
+              {copiedLink ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="text-emerald-700 font-semibold">Link Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Share</span>
+                </>
+              )}
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => printInvoiceDocument("printable-invoice-sheet")}
               className="gap-1.5 text-xs h-8"
             >
@@ -389,7 +473,21 @@ export default function DocumentDetailPage({
               <span>Print / PDF</span>
             </Button>
 
-            {doc.status !== "CANCELLED" && (
+            {isDraft && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleDeleteDraft}
+                disabled={actionLoading}
+                className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 text-xs h-8 gap-1.5"
+                title="Permanently delete draft"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete</span>
+              </Button>
+            )}
+
+            {doc.status !== "CANCELLED" && !isDraft && (
               <Button
                 size="sm"
                 variant="ghost"

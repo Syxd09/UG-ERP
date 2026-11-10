@@ -30,6 +30,8 @@ import {
   CreditCard,
   Building2,
   Calendar,
+  Copy,
+  Trash2,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
@@ -333,6 +335,40 @@ function DocumentsContent() {
                                 <Edit2 className="w-3.5 h-3.5" />
                               </Button>
                             </Link>
+                          )}
+
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={async () => {
+                              if (!confirm(`Duplicate document ${d.documentNumber}?`)) return;
+                              const res = await fetch(`/api/documents/${d.id}/duplicate`, { method: "POST" });
+                              const json = await res.json();
+                              if (json.success) fetchDocs();
+                              else alert(json.error || "Failed to duplicate");
+                            }}
+                            className="h-7 w-7 text-slate-500 hover:text-slate-900"
+                            title="Duplicate Document"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </Button>
+
+                          {d.status === "DRAFT" && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={async () => {
+                                if (!confirm(`Delete draft ${d.documentNumber}?`)) return;
+                                const res = await fetch(`/api/documents/${d.id}`, { method: "DELETE" });
+                                const json = await res.json();
+                                if (json.success) fetchDocs();
+                                else alert(json.error || "Failed to delete");
+                              }}
+                              className="h-7 w-7 text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                              title="Delete Draft"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
                           )}
                         </div>
                       </TableCell>
