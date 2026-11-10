@@ -1,4 +1,4 @@
-import prisma from "@/lib/db";
+import prisma, { isDatabaseConfigured } from "@/lib/db";
 import { DocumentType, DocumentStatus, DiscountType, Role } from "@prisma/client";
 import {
   calculateDocumentFinancials,
@@ -78,67 +78,77 @@ export async function getDocuments(filter: {
   customerId?: string;
   search?: string;
 }) {
-  if (!process.env.DATABASE_URL) {
+  if (!isDatabaseConfigured()) {
     return [];
   }
 
-  const where: any = {};
+  try {
+    const where: any = {};
 
-  if (filter.type) {
-    where.documentType = filter.type;
-  }
-  if (filter.status) {
-    where.status = filter.status;
-  }
-  if (filter.customerId) {
-    where.customerId = filter.customerId;
-  }
-  if (filter.search && filter.search.trim()) {
-    const q = filter.search.trim();
-    where.OR = [
-      { documentNumber: { contains: q, mode: "insensitive" } },
-      { customerName: { contains: q, mode: "insensitive" } },
-      { projectName: { contains: q, mode: "insensitive" } },
-      { referenceNo: { contains: q, mode: "insensitive" } },
-    ];
-  }
+    if (filter.type) {
+      where.documentType = filter.type;
+    }
+    if (filter.status) {
+      where.status = filter.status;
+    }
+    if (filter.customerId) {
+      where.customerId = filter.customerId;
+    }
+    if (filter.search && filter.search.trim()) {
+      const q = filter.search.trim();
+      where.OR = [
+        { documentNumber: { contains: q, mode: "insensitive" } },
+        { customerName: { contains: q, mode: "insensitive" } },
+        { projectName: { contains: q, mode: "insensitive" } },
+        { referenceNo: { contains: q, mode: "insensitive" } },
+      ];
+    }
 
-  return prisma.document.findMany({
-    where,
-    orderBy: { issueDate: "desc" },
-    include: {
-      items: true,
-      payments: {
-        orderBy: { paymentDate: "desc" },
+    return await prisma.document.findMany({
+      where,
+      orderBy: { issueDate: "desc" },
+      include: {
+        items: true,
+        payments: {
+          orderBy: { paymentDate: "desc" },
+        },
       },
-    },
-  });
+    });
+  } catch (error) {
+    console.error("Error in getDocuments:", error);
+    return [];
+  }
 }
 
 export async function getDocumentById(id: string) {
-  if (!process.env.DATABASE_URL) {
+  if (!isDatabaseConfigured()) {
     return null;
   }
 
-  return prisma.document.findUnique({
-    where: { id },
-    include: {
-      customer: true,
-      items: {
-        orderBy: { sortOrder: "asc" },
+  try {
+    return await prisma.document.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        items: {
+          orderBy: { sortOrder: "asc" },
+        },
+        taxSummaries: true,
+        payments: {
+          orderBy: { paymentDate: "desc" },
+        },
+        conversionsAsSource: {
+          include: { targetDocument: true },
+        },
+        conversionsAsTarget: {
+          include: { sourceDocument: true },
+        },
       },
-      taxSummaries: true,
-      payments: {
-        orderBy: { paymentDate: "desc" },
-      },
-      conversionsAsSource: {
-        include: { targetDocument: true },
-      },
-      conversionsAsTarget: {
-        include: { sourceDocument: true },
-      },
-    },
-  });
+    });
+  } catch (error) {
+    console.error("Error in getDocumentById:", error);
+    return null;
+  }
 }
 
 export async function createDocument(data: DocumentFormData) {

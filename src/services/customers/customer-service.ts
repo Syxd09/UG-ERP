@@ -1,4 +1,4 @@
-import prisma from "@/lib/db";
+import prisma, { isDatabaseConfigured } from "@/lib/db";
 import { z } from "zod";
 
 export const customerSchema = z.object({
@@ -24,7 +24,7 @@ export const customerSchema = z.object({
 export type CustomerFormData = z.infer<typeof customerSchema>;
 
 export async function getCustomers(search?: string) {
-  if (!process.env.DATABASE_URL) {
+  if (!isDatabaseConfigured()) {
     return [];
   }
   try {
@@ -79,7 +79,7 @@ export async function getCustomers(search?: string) {
 }
 
 export async function getCustomerById(id: string) {
-  if (!process.env.DATABASE_URL) {
+  if (!isDatabaseConfigured()) {
     return null;
   }
   try {

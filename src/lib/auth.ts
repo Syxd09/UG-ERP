@@ -1,7 +1,7 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import prisma from "@/lib/db";
+import prisma, { isDatabaseConfigured } from "@/lib/db";
 
 export const authOptions: NextAuthOptions = {
   session: {
@@ -34,7 +34,7 @@ export const authOptions: NextAuthOptions = {
         let user: any = null;
 
         try {
-          if (process.env.DATABASE_URL) {
+          if (isDatabaseConfigured()) {
             user = await prisma.user.findUnique({
               where: { email },
             });

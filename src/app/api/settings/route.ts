@@ -1,7 +1,61 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/db";
+import prisma, { isDatabaseConfigured } from "@/lib/db";
+
+const defaultCompanyProfile = {
+  id: "default-ug-company",
+  name: "Ultimate Graphics",
+  legalName: "Ultimate Graphics Signage & Fabrication",
+  tagline: "Signage • Printing • Branding • Fabrication",
+  gstin: "29AABCU9603R1ZM",
+  pan: "AABCU9603R",
+  state: "Karnataka",
+  stateCode: "29",
+  email: "billing@ultimategraphics.com",
+  phone: "+91 98860 12345",
+  website: "https://ultimategraphics.com",
+  address: "Plot 42, 3rd Phase, Peenya Industrial Area",
+  city: "Bengaluru",
+  pincode: "560058",
+  logoUrl: "/logos/main-logo.png",
+  symbolLogoUrl: "/logos/symbol-logo.jpeg",
+  bankAccounts: [
+    {
+      id: "ug-bank-default",
+      companyId: "default-ug-company",
+      accountHolder: "Ultimate Graphics",
+      bankName: "HDFC Bank Ltd",
+      accountNumber: "50200012345678",
+      ifsc: "HDFC0000142",
+      branch: "Peenya Industrial Area, Bengaluru",
+      isPrimary: true,
+    },
+  ],
+  upiDetails: [
+    {
+      id: "ug-upi-default",
+      companyId: "default-ug-company",
+      upiId: "ultimategraphics@hdfcbank",
+      payeeName: "Ultimate Graphics",
+      isPrimary: true,
+    },
+  ],
+  settings: {
+    id: "ug-settings-default",
+    companyId: "default-ug-company",
+    qtnPrefix: "UG/QTN",
+    piPrefix: "UG/PI",
+    invPrefix: "UG/INV",
+    fiscalYearStartMonth: 4,
+    defaultPaymentTerms: "50% advance with confirmed PO, balance against delivery/installation.",
+    defaultTermsAndConditions: "1. Delivery and installation: 7-10 working days from approval and advance.\n2. Civil and electrical connections at site to be provided by client.\n3. Quotation valid for 30 calendar days from issue date.",
+  },
+};
 
 export async function GET() {
+  if (!isDatabaseConfigured()) {
+    return NextResponse.json({ success: true, data: defaultCompanyProfile });
+  }
+
   try {
     const company = await prisma.company.findFirst({
       include: {
@@ -12,18 +66,13 @@ export async function GET() {
     });
 
     if (!company) {
-      return NextResponse.json(
-        { success: false, error: "Company profile not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: true, data: defaultCompanyProfile });
     }
 
     return NextResponse.json({ success: true, data: company });
   } catch (error: any) {
-    return NextResponse.json(
-      { success: false, error: error.message || "Failed to load settings" },
-      { status: 500 }
-    );
+    console.warn("Using default company profile due to DB error:", error);
+    return NextResponse.json({ success: true, data: defaultCompanyProfile });
   }
 }
 

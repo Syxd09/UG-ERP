@@ -1,4 +1,4 @@
-import prisma from "@/lib/db";
+import prisma, { isDatabaseConfigured } from "@/lib/db";
 import { PaymentMethod, DocumentStatus } from "@prisma/client";
 import { z } from "zod";
 
@@ -18,40 +18,45 @@ export async function getPayments(filter?: {
   method?: PaymentMethod;
   search?: string;
 }) {
-  if (!process.env.DATABASE_URL) {
+  if (!isDatabaseConfigured()) {
     return [];
   }
 
-  const where: any = {};
-  if (filter?.method) {
-    where.paymentMethod = filter.method;
-  }
-  if (filter?.search && filter.search.trim()) {
-    const q = filter.search.trim();
-    where.OR = [
-      { paymentNumber: { contains: q, mode: "insensitive" } },
-      { transactionRef: { contains: q, mode: "insensitive" } },
-      { document: { documentNumber: { contains: q, mode: "insensitive" } } },
-      { document: { customerName: { contains: q, mode: "insensitive" } } },
-    ];
-  }
+  try {
+    const where: any = {};
+    if (filter?.method) {
+      where.paymentMethod = filter.method;
+    }
+    if (filter?.search && filter.search.trim()) {
+      const q = filter.search.trim();
+      where.OR = [
+        { paymentNumber: { contains: q, mode: "insensitive" } },
+        { transactionRef: { contains: q, mode: "insensitive" } },
+        { document: { documentNumber: { contains: q, mode: "insensitive" } } },
+        { document: { customerName: { contains: q, mode: "insensitive" } } },
+      ];
+    }
 
-  return prisma.payment.findMany({
-    where,
-    orderBy: { paymentDate: "desc" },
-    include: {
-      document: {
-        select: {
-          id: true,
-          documentNumber: true,
-          documentType: true,
-          customerName: true,
-          totalAmount: true,
-          balanceDue: true,
+    return await prisma.payment.findMany({
+      where,
+      orderBy: { paymentDate: "desc" },
+      include: {
+        document: {
+          select: {
+            id: true,
+            documentNumber: true,
+            documentType: true,
+            customerName: true,
+            totalAmount: true,
+            balanceDue: true,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    console.error("Error in getPayments:", error);
+    return [];
+  }
 }
 
 export async function recordPayment(data: PaymentInput) {

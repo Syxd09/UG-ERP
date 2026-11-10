@@ -1,4 +1,4 @@
-import prisma from "@/lib/db";
+import prisma, { isDatabaseConfigured } from "@/lib/db";
 import { z } from "zod";
 
 export const productServiceSchema = z.object({
@@ -15,7 +15,7 @@ export const productServiceSchema = z.object({
 export type ProductServiceFormData = z.infer<typeof productServiceSchema>;
 
 export async function getProductsServices(category?: string, search?: string) {
-  if (!process.env.DATABASE_URL) {
+  if (!isDatabaseConfigured()) {
     return [];
   }
   try {
