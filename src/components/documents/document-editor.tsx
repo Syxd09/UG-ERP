@@ -161,7 +161,7 @@ export function DocumentEditor({
       "1. Delivery and installation: 7-10 working days from approval and advance.\n2. Civil and electrical connections at site to be provided by client.\n3. Quotation valid for 30 calendar days from issue date."
   );
 
-  // Items State
+  // Items State (starts empty for new documents - no dummy/prefilled data)
   const [items, setItems] = useState<ItemState[]>(
     initialData?.items?.length
       ? initialData.items.map((it: any) => ({
@@ -178,22 +178,7 @@ export function DocumentEditor({
           gstRate: Number(it.gstRate) || 18,
           isGstInclusive: it.isGstInclusive || false,
         }))
-      : [
-          {
-            name: "3D Illuminated Channel Letters",
-            description: "High-grade aluminium returns with Samsung LED lighting and Meanwell power supply",
-            hsnSac: "940540",
-            unit: "Running ft.",
-            dimensions: "12 ft length x 2 ft letter height",
-            specifications: "Cast acrylic face, 12V waterproof modules",
-            quantity: 12,
-            unitRate: 1250,
-            discountType: "PERCENTAGE",
-            discountValue: 0,
-            gstRate: 18,
-            isGstInclusive: false,
-          },
-        ]
+      : []
   );
 
   // Master options
@@ -243,7 +228,7 @@ export function DocumentEditor({
       {
         name: "",
         description: "",
-        hsnSac: "831000",
+        hsnSac: "",
         unit: "Nos",
         dimensions: "",
         specifications: "",
@@ -258,7 +243,6 @@ export function DocumentEditor({
   };
 
   const removeItem = (index: number) => {
-    if (items.length <= 1) return;
     setItems(items.filter((_, i) => i !== index));
   };
 
@@ -383,6 +367,13 @@ export function DocumentEditor({
       return;
     }
 
+    const validItems = items.filter((it) => it.name.trim() !== "");
+    if (validItems.length === 0) {
+      setErrorMessage("Please add at least one line item with a service or item title.");
+      setSubmitting(false);
+      return;
+    }
+
     const payload = {
       documentType: docType,
       documentNumber: documentNumber.trim() || undefined,
@@ -413,7 +404,7 @@ export function DocumentEditor({
       notes,
       termsAndConditions,
 
-      items: items.map((it, idx) => ({
+      items: validItems.map((it, idx) => ({
         name: it.name,
         description: it.description || null,
         hsnSac: it.hsnSac || null,
@@ -793,57 +784,115 @@ export function DocumentEditor({
               </Button>
             </div>
 
-            {items.map((item, index) => (
-              <Card key={index} className="border-slate-200 shadow-sm relative group">
-                <CardContent className="p-4 space-y-3 text-xs">
-                  {/* Item Quick Catalogue Selector & Controls */}
-                  <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                    <div className="flex items-center gap-2 flex-1">
-                      <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[10px]">
-                        {index + 1}
-                      </span>
-                      {catalogueList.length > 0 && (
-                        <select
-                          className="h-7 px-2 border border-slate-300 rounded text-[11px] bg-slate-50 text-slate-700 max-w-xs"
-                          onChange={(e) => populateFromCatalogue(index, e.target.value)}
-                          defaultValue=""
-                        >
-                          <option value="" disabled>
-                            -- Choose from Catalogue --
-                          </option>
-                          {catalogueList.map((cat) => (
-                            <option key={cat.id} value={cat.id}>
-                              [{cat.category}] {cat.name}
+            {items.length === 0 ? (
+              <div className="text-center p-8 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                <Sparkles className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-xs font-semibold text-slate-700">No Line Items Added</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Click &quot;Add Item&quot; to enter a custom item or select from your service catalogue.
+                </p>
+                <div className="flex items-center justify-center gap-3 mt-4">
+                  <Button
+                    type="button"
+                    onClick={addItem}
+                    variant="brand"
+                    size="sm"
+                    className="gap-1.5 text-xs h-8"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Item</span>
+                  </Button>
+                  {catalogueList.length > 0 && (
+                    <select
+                      className="h-8 px-3 border border-slate-300 rounded text-xs bg-white text-slate-700 font-medium"
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const service = catalogueList.find((s) => s.id === e.target.value);
+                          if (service) {
+                            setItems([
+                              {
+                                name: service.name,
+                                description: service.description || "",
+                                hsnSac: service.hsnSac || "",
+                                unit: service.unit || "Nos",
+                                dimensions: "",
+                                specifications: "",
+                                quantity: 1,
+                                unitRate: service.defaultRate || 0,
+                                discountType: "PERCENTAGE",
+                                discountValue: 0,
+                                gstRate: service.defaultGstRate || 18,
+                                isGstInclusive: false,
+                              },
+                            ]);
+                          }
+                        }
+                      }}
+                      defaultValue=""
+                    >
+                      <option value="" disabled>
+                        -- Choose from Catalogue --
+                      </option>
+                      {catalogueList.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          [{cat.category}] {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+            ) : (
+              items.map((item, index) => (
+                <Card key={index} className="border-slate-200 shadow-sm relative group">
+                  <CardContent className="p-4 space-y-3 text-xs">
+                    {/* Item Quick Catalogue Selector & Controls */}
+                    <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                      <div className="flex items-center gap-2 flex-1">
+                        <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[10px]">
+                          {index + 1}
+                        </span>
+                        {catalogueList.length > 0 && (
+                          <select
+                            className="h-7 px-2 border border-slate-300 rounded text-[11px] bg-slate-50 text-slate-700 max-w-xs"
+                            onChange={(e) => populateFromCatalogue(index, e.target.value)}
+                            defaultValue=""
+                          >
+                            <option value="" disabled>
+                              -- Choose from Catalogue --
                             </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
+                            {catalogueList.map((cat) => (
+                              <option key={cat.id} value={cat.id}>
+                                [{cat.category}] {cat.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
 
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 text-slate-400 hover:text-slate-700"
-                        onClick={() => duplicateItem(index)}
-                        title="Duplicate line item"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 text-rose-400 hover:text-rose-600 hover:bg-rose-50"
-                        onClick={() => removeItem(index)}
-                        disabled={items.length <= 1}
-                        title="Remove line item"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                          onClick={() => duplicateItem(index)}
+                          title="Duplicate line item"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-rose-400 hover:text-rose-600 hover:bg-rose-50"
+                          onClick={() => removeItem(index)}
+                          title="Remove line item"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
 
                   {/* Item Description, Specs & Dimensions */}
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
@@ -1004,7 +1053,7 @@ export function DocumentEditor({
                   </div>
                 </CardContent>
               </Card>
-            ))}
+            )))}
           </div>
 
           {/* SECTION D: COMMERCIAL TERMS & DOCUMENT DISCOUNT */}
