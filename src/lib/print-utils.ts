@@ -1,9 +1,9 @@
 /**
  * Ultimate Graphics Billing Management System
- * High-Fidelity Vector Print & PDF Utilities
+ * High-Fidelity Multi-Page Vector Print & PDF Utilities
  *
  * Provides dedicated iframe-isolated printing that eliminates browser headers/footers,
- * eliminates parent container scaling/overflow bugs, and guarantees exact A4 dimensions.
+ * paginates multi-sheet quotations and invoices cleanly without clipping, and guarantees exact A4 dimensions.
  */
 
 export function printInvoiceDocument(elementId: string = "printable-invoice-sheet"): void {
@@ -29,7 +29,8 @@ export function printInvoiceDocument(elementId: string = "printable-invoice-shee
   iframe.style.top = "-9999px";
   iframe.style.left = "-9999px";
   iframe.style.width = "210mm";
-  iframe.style.height = "297mm";
+  iframe.style.height = "auto";
+  iframe.style.minHeight = "297mm";
   iframe.style.border = "none";
   iframe.style.opacity = "0";
   iframe.style.pointerEvents = "none";
@@ -47,6 +48,7 @@ export function printInvoiceDocument(elementId: string = "printable-invoice-shee
     .join("\n");
 
   // Exact A4 CSS with margin: 0 to suppress browser header/footer (date, title, URL)
+  // and page-break-after: always on individual A4 sheets
   const printStyleSheet = `
     <style>
       @page {
@@ -66,24 +68,39 @@ export function printInvoiceDocument(elementId: string = "printable-invoice-shee
         background: #ffffff !important;
         color: #0f172a !important;
         width: 210mm !important;
-        min-height: 297mm !important;
         font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+        overflow: visible !important;
+      }
+
+      .print-container {
+        width: 210mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
       }
 
       .a4-sheet {
         width: 210mm !important;
+        height: 297mm !important;
         min-height: 297mm !important;
+        max-height: 297mm !important;
         margin: 0 !important;
-        padding: 10mm 12mm 8mm 12mm !important;
+        padding: 10mm 12mm 10mm 12mm !important;
         box-shadow: none !important;
         border: none !important;
         border-radius: 0 !important;
         background: #ffffff !important;
         box-sizing: border-box !important;
         transform: none !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        overflow: hidden !important;
+      }
+
+      .a4-sheet:last-of-type {
         page-break-after: avoid !important;
+        break-after: avoid !important;
       }
 
       .avoid-break {
@@ -130,7 +147,7 @@ export function printInvoiceDocument(elementId: string = "printable-invoice-shee
       // Clean up iframe after print dialog completes
       setTimeout(() => {
         iframe.remove();
-      }, 2000);
+      }, 2500);
     }
-  }, 400);
+  }, 450);
 }

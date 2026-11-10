@@ -96,12 +96,13 @@
 .a4-sheet {
   width: 210mm;
   min-height: 297mm;
+  height: 297mm;
   box-sizing: border-box;
 }
 
 /* =========================================================================
-   PROFESSIONAL VECTOR PRINT STYLESHEET
-   Eliminates browser headers/footers, grey borders, and enforces exact A4 layout.
+   PROFESSIONAL VECTOR MULTI-PAGE PRINT STYLESHEET
+   Eliminates browser headers/footers, grey borders, and enforces exact A4 layout per page.
    ========================================================================= */
 @media print {
   @page {
@@ -161,20 +162,38 @@
   }
 
   #printable-invoice-sheet {
-    position: fixed !important;
+    position: absolute !important;
     left: 0 !important;
     top: 0 !important;
     width: 210mm !important;
-    min-height: 297mm !important;
     margin: 0 !important;
-    padding: 10mm 12mm 8mm 12mm !important; /* Clean executive stationary margins */
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    z-index: 99999999 !important;
+  }
+
+  .a4-sheet {
+    width: 210mm !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    max-height: 297mm !important;
+    margin: 0 !important;
+    padding: 10mm 12mm 10mm 12mm !important; /* Clean executive stationary margins */
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;
     background: #ffffff !important;
     box-sizing: border-box !important;
-    z-index: 99999999 !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    overflow: hidden !important;
+  }
+
+  .a4-sheet:last-child {
     page-break-after: avoid !important;
+    break-after: avoid !important;
   }
 
   .avoid-break {

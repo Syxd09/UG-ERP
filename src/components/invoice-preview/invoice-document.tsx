@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import QRCode from "qrcode";
 import { formatCurrency, formatDate, numberToWordsINR } from "@/lib/utils";
@@ -90,6 +90,156 @@ interface InvoiceDocumentProps {
   id?: string;
 }
 
+interface PageSlice {
+  pageNumber: number;
+  items: CalculatedItem[];
+  startIndex: number;
+  isFirstPage: boolean;
+  isLastPage: boolean;
+  isContinuation: boolean;
+  showCommercialSummary: boolean;
+}
+
+/**
+ * Calculates visual vertical weight of an item based on its length and specifications
+ */
+function getItemWeight(item: CalculatedItem): number {
+  let weight = 44; // Standard row with name, qty, unit, rate, amount
+  if (item.description && item.description.trim().length > 0) {
+    const chars = item.description.trim().length;
+    weight += Math.min(60, Math.ceil(chars / 65) * 16);
+  }
+  if (item.dimensions || item.specifications) {
+    weight += 28;
+  }
+  return weight;
+}
+
+/**
+ * High-precision A4 multi-page pagination algorithm
+ * Divides line items and summaries across physical A4 sheets so no content is ever clipped.
+ */
+function paginateInvoiceItems(items: CalculatedItem[]): PageSlice[] {
+  const SINGLE_PAGE_MAX_WEIGHT = 110; // Max items weight that can fit on Page 1 alongside commercial summary
+  const PAGE1_BUDGET = 420; // Maximum items budget on Page 1 when multi-page
+  const CONTINUATION_BUDGET = 720; // Maximum items budget on continuation pages (no customer/header block)
+  const LAST_PAGE_BUDGET_WITH_SUMMARY = 340; // Maximum items budget on the final page alongside commercial summary
+
+  if (!items || items.length === 0) {
+    return [
+      {
+        pageNumber: 1,
+        items: [],
+        startIndex: 0,
+        isFirstPage: true,
+        isLastPage: true,
+        isContinuation: false,
+        showCommercialSummary: true,
+      },
+    ];
+  }
+
+  const weights = items.map(getItemWeight);
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+
+  // 1. Single Page Case: Fits completely on 1 sheet
+  if (totalWeight <= SINGLE_PAGE_MAX_WEIGHT) {
+    return [
+      {
+        pageNumber: 1,
+        items,
+        startIndex: 0,
+        isFirstPage: true,
+        isLastPage: true,
+        isContinuation: false,
+        showCommercialSummary: true,
+      },
+    ];
+  }
+
+  // 2. Multi-Page Case: Split across Page 1, Page 2, and further continuation sheets
+  const pages: PageSlice[] = [];
+  let currentIndex = 0;
+  let pageNumber = 1;
+
+  while (currentIndex < items.length) {
+    const isFirstPage = pageNumber === 1;
+    const startIndex = currentIndex;
+    const pageItems: CalculatedItem[] = [];
+    let accumulated = 0;
+
+    const remainingItems = items.slice(currentIndex);
+    const remainingWeight = weights.slice(currentIndex).reduce((a, b) => a + b, 0);
+
+    // If we are on a continuation page and all remaining items fit WITH the commercial summary:
+    if (!isFirstPage && remainingWeight <= LAST_PAGE_BUDGET_WITH_SUMMARY) {
+      pages.push({
+        pageNumber,
+        items: remainingItems,
+        startIndex,
+        isFirstPage: false,
+        isLastPage: true,
+        isContinuation: true,
+        showCommercialSummary: true,
+      });
+      break;
+    }
+
+    const budget = isFirstPage ? PAGE1_BUDGET : CONTINUATION_BUDGET;
+
+    while (currentIndex < items.length) {
+      const w = weights[currentIndex];
+      const itemsLeftAfterThis = items.length - (currentIndex + 1);
+
+      if (pageItems.length > 0 && accumulated + w > budget) {
+        break;
+      }
+
+      // If multi-page and we are filling a page that won't be the final summary page,
+      // leave at least 2 items for the subsequent page so it's never an orphan summary page
+      if (itemsLeftAfterThis < 2 && remainingWeight > LAST_PAGE_BUDGET_WITH_SUMMARY) {
+        break;
+      }
+
+      pageItems.push(items[currentIndex]);
+      accumulated += w;
+      currentIndex++;
+    }
+
+    const isLast = currentIndex >= items.length;
+    const canFitSummary = isLast && !isFirstPage && accumulated <= LAST_PAGE_BUDGET_WITH_SUMMARY;
+
+    pages.push({
+      pageNumber,
+      items: pageItems,
+      startIndex,
+      isFirstPage,
+      isLastPage: isLast && canFitSummary,
+      isContinuation: !isFirstPage,
+      showCommercialSummary: canFitSummary,
+    });
+
+    pageNumber++;
+  }
+
+  // If the last page filled up to continuation budget without room for summary, add a final summary page
+  const lastPage = pages[pages.length - 1];
+  if (!lastPage.showCommercialSummary) {
+    pages.push({
+      pageNumber: pages.length + 1,
+      items: [],
+      startIndex: items.length,
+      isFirstPage: false,
+      isLastPage: true,
+      isContinuation: true,
+      showCommercialSummary: true,
+    });
+  }
+
+  // Fix total pages references
+  return pages;
+}
+
 export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: InvoiceDocumentProps) {
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
 
@@ -106,7 +256,7 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
     address: "Plot 42, 3rd Phase, Peenya Industrial Area",
     city: "Bengaluru",
     pincode: "560058",
-    logoUrl: "/logos/main-logo.png",
+    logoUrl: "/logos/main-logo-light-bg.png",
     symbolLogoUrl: "/logos/symbol-logo.jpeg",
   };
 
@@ -156,518 +306,622 @@ export function InvoiceDocument({ data, id = "printable-invoice-sheet" }: Invoic
   const isTaxInvoice = data.documentType === "TAX_INVOICE";
   const isInterState = data.isInterState;
 
+  // Compute pagination slices
+  const pages = useMemo(() => paginateInvoiceItems(data.items), [data.items]);
+  const totalPages = pages.length;
+
   return (
-    <div
-      id={id}
-      className="a4-sheet bg-white text-slate-900 mx-auto relative shadow-2xl print:shadow-none p-10 flex flex-col justify-between font-sans leading-normal select-text"
-    >
-      {/* Signature Ultimate Graphics Gradient Top Accent Strip */}
-      <div className="absolute top-0 right-0 w-80 h-2 bg-gradient-to-r from-cyan-400 via-rose-500 to-orange-400" />
-      <div className="absolute top-0 left-0 w-32 h-1.5 bg-gradient-to-r from-cyan-400 to-cyan-500" />
+    <div id={id} className="print-container space-y-8 print:space-y-0">
+      {pages.map((page, pIdx) => {
+        const isMultiPage = totalPages > 1;
 
-      {/* Main Document Body */}
-      <div>
-        {/* HEADER SECTION: LOGO + METADATA */}
-        <div className="flex justify-between items-start pb-5 border-b border-slate-200">
-          <div>
-            {/* Authentic Brand Header with Circular Monogram & Official Brand Logo */}
-            <div className="flex items-center gap-3.5 mb-2.5">
-              <div className="w-12 h-12 rounded-xl overflow-hidden ring-1 ring-slate-900/10 shadow-sm shrink-0 bg-slate-950 flex items-center justify-center">
-                <Image
-                  src="/logos/symbol-logo.jpeg"
-                  alt="UG Emblem"
-                  width={48}
-                  height={48}
-                  unoptimized
-                  priority
-                  className="w-full h-full object-cover"
-                />
-              </div>
+        return (
+          <div
+            key={pIdx}
+            className="a4-sheet bg-white text-slate-900 mx-auto relative shadow-2xl print:shadow-none p-8 sm:p-10 flex flex-col justify-between font-sans leading-normal select-text"
+            data-page={page.pageNumber}
+          >
+            {/* Signature Ultimate Graphics Gradient Top Accent Strip */}
+            <div className="absolute top-0 right-0 w-80 h-2 bg-gradient-to-r from-cyan-400 via-rose-500 to-orange-400" />
+            <div className="absolute top-0 left-0 w-32 h-1.5 bg-gradient-to-r from-cyan-400 to-cyan-500" />
 
-              <div>
-                <div className="h-9 flex items-center">
-                  <Image
-                    src="/logos/main-logo-light-bg.png"
-                    alt="Ultimate Graphics"
-                    width={180}
-                    height={44}
-                    unoptimized
-                    priority
-                    className="h-9 w-auto object-contain"
-                  />
-                </div>
-                <div className="text-[9px] font-bold tracking-widest text-slate-600 uppercase mt-0.5">
-                  Architectural Signage • CNC & Laser Cutting • Fleet Branding
-                </div>
-              </div>
-            </div>
-
-            {/* Company Legal Information */}
-            <div className="text-[11px] text-slate-600 space-y-0.5 pl-0.5">
-              <div className="font-bold text-slate-900">{company.legalName}</div>
-              <div>{company.address}, {company.city} - {company.pincode}</div>
-              <div>
-                State: <span className="font-semibold text-slate-800">{company.state}</span> (Code:{" "}
-                <span className="font-semibold text-slate-800">{company.stateCode}</span>)
-              </div>
-              <div className="flex items-center gap-3 pt-0.5">
-                <span>Tel: {company.phone}</span>
-                <span>•</span>
-                <span>{company.email}</span>
-              </div>
-              {company.gstin && (
-                <div className="pt-1 flex items-center gap-1.5">
-                  <span className="font-bold text-slate-900">GSTIN:</span>
-                  <span className="font-mono font-bold tracking-wider text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">
-                    {company.gstin}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Document Title & Reference Block */}
-          <div className="text-right">
-            <div className="inline-block">
-              <h1 className="text-2xl font-black tracking-wider text-slate-950 uppercase">
-                {docTitle}
-              </h1>
-              <div className="h-1 w-full bg-gradient-to-r from-cyan-400 via-rose-500 to-orange-400 mt-1 rounded-full" />
-            </div>
-
-            <div className="mt-4 text-xs space-y-1.5 font-medium">
-              <div className="flex justify-end gap-3 items-center">
-                <span className="text-slate-500">
-                  {isQuotation ? "Quotation No:" : isTaxInvoice ? "Invoice No:" : "Proforma No:"}
-                </span>
-                <span className="font-mono font-bold text-slate-950 text-sm bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
-                  {data.documentNumber || "DRAFT"}
-                </span>
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <span className="text-slate-500">Date:</span>
-                <span className="text-slate-900 font-semibold">
-                  {formatDate(data.issueDate)}
-                </span>
-              </div>
-
-              {data.validityDate && (
-                <div className="flex justify-end gap-3">
-                  <span className="text-slate-500">Valid Until:</span>
-                  <span className="text-slate-900 font-semibold">{formatDate(data.validityDate)}</span>
-                </div>
-              )}
-
-              {data.dueDate && !data.validityDate && (
-                <div className="flex justify-end gap-3">
-                  <span className="text-slate-500">Due Date:</span>
-                  <span className="text-slate-900 font-semibold">{formatDate(data.dueDate)}</span>
-                </div>
-              )}
-
-              {data.referenceNo && (
-                <div className="flex justify-end gap-3">
-                  <span className="text-slate-500">Ref / PO No:</span>
-                  <span className="text-slate-900 font-mono font-semibold">{data.referenceNo}</span>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3 pt-1 text-[11px]">
-                <span className="text-slate-500">Place of Supply:</span>
-                <span className="text-slate-900 font-bold">
-                  {data.placeOfSupplyState} ({data.placeOfSupplyCode})
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* BILLED TO / SHIPPED TO / PROJECT INFORMATION */}
-        <div className="grid grid-cols-2 gap-6 py-4 text-xs border-b border-slate-200">
-          <div className="bg-slate-50/70 p-3.5 rounded-lg border border-slate-200/80">
-            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
-              <span>Billed To</span>
-              {data.customerGstin && (
-                <span className="text-slate-500 font-mono">
-                  Code: {data.placeOfSupplyCode}
-                </span>
-              )}
-            </div>
-            <div className="font-bold text-slate-950 text-sm">
-              {data.customerName || "Customer Name"}
-            </div>
-            {data.customerContactPerson && (
-              <div className="text-slate-700 font-medium mt-0.5">
-                Attn: {data.customerContactPerson}
-              </div>
-            )}
-            <div className="text-slate-600 mt-1 whitespace-pre-line leading-relaxed">
-              {data.customerBillingAddress}
-            </div>
-            <div className="text-slate-600 mt-1 flex flex-wrap gap-x-3 text-[11px]">
-              {data.customerPhone && <span>Ph: {data.customerPhone}</span>}
-              {data.customerEmail && <span>{data.customerEmail}</span>}
-            </div>
-            {data.customerGstin && (
-              <div className="mt-2 text-slate-900 font-bold flex items-center gap-1.5">
-                <span className="text-slate-600 font-medium">GSTIN:</span>
-                <span className="font-mono text-xs bg-white px-2 py-0.5 rounded border border-slate-200">
-                  {data.customerGstin}
+            {/* Visual Page Indicator for On-Screen Editing Canvas */}
+            {isMultiPage && (
+              <div className="absolute top-3 right-5 print:hidden">
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
+                  Page {page.pageNumber} of {totalPages}
                 </span>
               </div>
             )}
-          </div>
 
-          <div className="bg-slate-50/70 p-3.5 rounded-lg border border-slate-200/80">
-            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-              Project Execution & Site Installation
-            </div>
-            {data.projectName ? (
-              <div className="font-bold text-slate-950 text-sm">
-                {data.projectName}
-              </div>
-            ) : (
-              <div className="text-slate-500 italic">Signage & Branding Works</div>
-            )}
+            {/* MAIN DOCUMENT BODY */}
+            <div>
+              {/* =========================================================
+                  PAGE 1: FULL BRAND HEADER & METADATA
+                  ========================================================= */}
+              {page.isFirstPage ? (
+                <>
+                  <div className="flex justify-between items-start pb-4 border-b border-slate-200">
+                    <div>
+                      {/* Authentic Brand Header with Circular Monogram & Official High-Contrast Logo */}
+                      <div className="flex items-center gap-3.5 mb-2">
+                        <div className="w-12 h-12 rounded-xl overflow-hidden ring-1 ring-slate-900/10 shadow-sm shrink-0 bg-slate-950 flex items-center justify-center">
+                          <Image
+                            src="/logos/symbol-logo.jpeg"
+                            alt="UG Emblem"
+                            width={48}
+                            height={48}
+                            unoptimized
+                            priority
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
 
-            {data.projectLocation && (
-              <div className="text-slate-700 mt-0.5">
-                Location: <span className="font-semibold text-slate-900">{data.projectLocation}</span>
-              </div>
-            )}
+                        <div>
+                          <div className="h-9 flex items-center">
+                            <Image
+                              src="/logos/main-logo-light-bg.png"
+                              alt="Ultimate Graphics"
+                              width={180}
+                              height={44}
+                              unoptimized
+                              priority
+                              className="h-9 w-auto object-contain"
+                            />
+                          </div>
+                          <div className="text-[9px] font-bold tracking-widest text-slate-600 uppercase mt-0.5">
+                            Architectural Signage • CNC & Laser Cutting • Fleet Branding
+                          </div>
+                        </div>
+                      </div>
 
-            {data.siteAddress && (
-              <div className="text-slate-600 mt-1 leading-relaxed">
-                <span className="font-semibold text-slate-700">Site Address: </span>
-                {data.siteAddress}
-              </div>
-            )}
+                      {/* Company Legal Information */}
+                      <div className="text-[11px] text-slate-600 space-y-0.5 pl-0.5">
+                        <div className="font-bold text-slate-900">{company.legalName}</div>
+                        <div>{company.address}, {company.city} - {company.pincode}</div>
+                        <div>
+                          State: <span className="font-semibold text-slate-800">{company.state}</span> (Code:{" "}
+                          <span className="font-semibold text-slate-800">{company.stateCode}</span>)
+                        </div>
+                        <div className="flex items-center gap-3 pt-0.5">
+                          <span>Tel: {company.phone}</span>
+                          <span>•</span>
+                          <span>{company.email}</span>
+                        </div>
+                        {company.gstin && (
+                          <div className="pt-1 flex items-center gap-1.5">
+                            <span className="font-bold text-slate-900">GSTIN:</span>
+                            <span className="font-mono font-bold tracking-wider text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">
+                              {company.gstin}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
-            {data.customerShippingAddress &&
-              data.customerShippingAddress !== data.customerBillingAddress && (
-                <div className="text-slate-600 mt-1 leading-relaxed">
-                  <span className="font-semibold text-slate-700">Dispatch / Material Delivery: </span>
-                  {data.customerShippingAddress}
-                </div>
-              )}
-          </div>
-        </div>
+                    {/* Document Title & Reference Block */}
+                    <div className="text-right">
+                      <div className="inline-block">
+                        <h1 className="text-2xl font-black tracking-wider text-slate-950 uppercase">
+                          {docTitle}
+                        </h1>
+                        <div className="h-1 w-full bg-gradient-to-r from-cyan-400 via-rose-500 to-orange-400 mt-1 rounded-full" />
+                      </div>
 
-        {/* ITEMISED SERVICES TABLE */}
-        <div className="pt-3 pb-2">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-950 text-white text-[10px] font-bold uppercase tracking-wider">
-                <th className="py-2.5 pl-3 pr-2 w-8 text-center rounded-l">#</th>
-                <th className="py-2.5 px-2">Scope of Works & Specifications</th>
-                <th className="py-2.5 px-2 text-center w-16">HSN/SAC</th>
-                <th className="py-2.5 px-2 text-center w-14">Qty</th>
-                <th className="py-2.5 px-2 text-center w-16">Unit</th>
-                <th className="py-2.5 px-2 text-right w-20">Rate (₹)</th>
-                {isTaxInvoice && (
-                  <th className="py-2.5 px-2 text-center w-14">GST</th>
-                )}
-                <th className="py-2.5 pr-3 pl-2 text-right w-24 rounded-r">Amount (₹)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 text-xs">
-              {data.items.length === 0 ? (
-                <tr>
-                  <td colSpan={isTaxInvoice ? 8 : 7} className="py-8 text-center text-slate-400 italic">
-                    No items added to this document yet.
-                  </td>
-                </tr>
-              ) : (
-                data.items.map((it, idx) => (
-                  <tr key={idx} className="avoid-break align-top hover:bg-slate-50/50">
-                    <td className="py-3 pl-3 pr-2 text-center text-slate-500 font-mono text-[11px]">
-                      {idx + 1}
-                    </td>
-                    <td className="py-3 px-2">
-                      <div className="font-bold text-slate-950 text-[13px]">{it.name}</div>
-                      {it.description && (
-                        <div className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
-                          {it.description}
+                      <div className="mt-3 text-xs space-y-1 font-medium">
+                        <div className="flex justify-end gap-3 items-center">
+                          <span className="text-slate-500">
+                            {isQuotation ? "Quotation No:" : isTaxInvoice ? "Invoice No:" : "Proforma No:"}
+                          </span>
+                          <span className="font-mono font-bold text-slate-950 text-sm bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                            {data.documentNumber || "DRAFT"}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-end gap-3">
+                          <span className="text-slate-500">Date:</span>
+                          <span className="text-slate-900 font-semibold">
+                            {formatDate(data.issueDate)}
+                          </span>
+                        </div>
+
+                        {data.validityDate && (
+                          <div className="flex justify-end gap-3">
+                            <span className="text-slate-500">Valid Until:</span>
+                            <span className="text-slate-900 font-semibold">{formatDate(data.validityDate)}</span>
+                          </div>
+                        )}
+
+                        {data.dueDate && !data.validityDate && (
+                          <div className="flex justify-end gap-3">
+                            <span className="text-slate-500">Due Date:</span>
+                            <span className="text-slate-900 font-semibold">{formatDate(data.dueDate)}</span>
+                          </div>
+                        )}
+
+                        {data.referenceNo && (
+                          <div className="flex justify-end gap-3">
+                            <span className="text-slate-500">Ref / PO No:</span>
+                            <span className="text-slate-900 font-mono font-semibold">{data.referenceNo}</span>
+                          </div>
+                        )}
+
+                        <div className="flex justify-end gap-3 pt-0.5 text-[11px]">
+                          <span className="text-slate-500">Place of Supply:</span>
+                          <span className="text-slate-900 font-bold">
+                            {data.placeOfSupplyState} ({data.placeOfSupplyCode})
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BILLED TO / SHIPPED TO / PROJECT INFORMATION */}
+                  <div className="grid grid-cols-2 gap-5 py-3 text-xs border-b border-slate-200">
+                    <div className="bg-slate-50/70 p-3 rounded-lg border border-slate-200/80">
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+                        <span>Billed To</span>
+                        {data.customerGstin && (
+                          <span className="text-slate-500 font-mono">
+                            Code: {data.placeOfSupplyCode}
+                          </span>
+                        )}
+                      </div>
+                      <div className="font-bold text-slate-950 text-sm">
+                        {data.customerName || "Customer Name"}
+                      </div>
+                      {data.customerContactPerson && (
+                        <div className="text-slate-700 font-medium mt-0.5">
+                          Attn: {data.customerContactPerson}
                         </div>
                       )}
-                      {(it.dimensions || it.specifications) && (
-                        <div className="text-[10px] text-slate-600 mt-1 bg-slate-50 p-1.5 rounded border border-slate-200/60 flex flex-wrap gap-x-3">
-                          {it.dimensions && (
-                            <span>
-                              <strong className="text-slate-800">Dim:</strong> {it.dimensions}
-                            </span>
-                          )}
-                          {it.specifications && (
-                            <span>
-                              <strong className="text-slate-800">Specs:</strong> {it.specifications}
-                            </span>
-                          )}
+                      <div className="text-slate-600 mt-1 whitespace-pre-line leading-relaxed text-[11px]">
+                        {data.customerBillingAddress}
+                      </div>
+                      <div className="text-slate-600 mt-1 flex flex-wrap gap-x-3 text-[11px]">
+                        {data.customerPhone && <span>Ph: {data.customerPhone}</span>}
+                        {data.customerEmail && <span>{data.customerEmail}</span>}
+                      </div>
+                      {data.customerGstin && (
+                        <div className="mt-1.5 text-slate-900 font-bold flex items-center gap-1.5">
+                          <span className="text-slate-600 font-medium text-[11px]">GSTIN:</span>
+                          <span className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                            {data.customerGstin}
+                          </span>
                         </div>
                       )}
-                    </td>
-                    <td className="py-3 px-2 text-center font-mono text-[11px] text-slate-600">
-                      {it.hsnSac || "-"}
-                    </td>
-                    <td className="py-3 px-2 text-center font-bold text-slate-950">
-                      {it.quantity}
-                    </td>
-                    <td className="py-3 px-2 text-center text-slate-600 text-[11px]">
-                      {it.unit}
-                    </td>
-                    <td className="py-3 px-2 text-right font-mono text-slate-900 font-medium">
-                      {it.unitRate.toFixed(2)}
-                    </td>
-                    {isTaxInvoice && (
-                      <td className="py-3 px-2 text-center font-mono text-[11px] text-slate-700 font-semibold">
-                        {it.gstRate}%
-                      </td>
-                    )}
-                    <td className="py-3 pr-3 pl-2 text-right font-mono font-bold text-slate-950">
-                      {it.taxableAmount.toFixed(2)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                    </div>
 
-        {/* TOTALS & TAX BREAKDOWN */}
-        <div className="pt-3 border-t-2 border-slate-900 grid grid-cols-12 gap-6 avoid-break">
-          {/* Left Column: Amount in Words & HSN Tax Summary */}
-          <div className="col-span-7 space-y-3">
-            {/* Amount in words */}
-            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                Total Invoice Amount in Words
-              </div>
-              <div className="font-bold text-slate-950 text-xs mt-0.5 leading-relaxed">
-                {numberToWordsINR(data.totalAmount)}
-              </div>
-            </div>
-
-            {/* HSN/SAC Tax Summary Table */}
-            {(isTaxInvoice || (data.taxSummaries && data.taxSummaries.length > 0)) && (
-              <div className="border border-slate-200 rounded-lg overflow-hidden">
-                <div className="bg-slate-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-800 flex justify-between">
-                  <span>GST Tax Breakdown (HSN / SAC Wise)</span>
-                  <span className="font-mono text-[9px] text-slate-500">
-                    {isInterState ? "Inter-State (IGST 100%)" : "Intra-State (CGST 50% + SGST 50%)"}
-                  </span>
-                </div>
-                <table className="w-full text-[10px] text-left">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
-                    <tr>
-                      <th className="py-1 px-2 font-bold">HSN/SAC</th>
-                      <th className="py-1 px-2 text-right font-bold">Taxable (₹)</th>
-                      {isInterState ? (
-                        <th className="py-1 px-2 text-right font-bold">IGST (₹)</th>
+                    <div className="bg-slate-50/70 p-3 rounded-lg border border-slate-200/80">
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        Project Execution & Site Installation
+                      </div>
+                      {data.projectName ? (
+                        <div className="font-bold text-slate-950 text-sm">
+                          {data.projectName}
+                        </div>
                       ) : (
-                        <>
-                          <th className="py-1 px-2 text-right font-bold">CGST (₹)</th>
-                          <th className="py-1 px-2 text-right font-bold">SGST (₹)</th>
-                        </>
+                        <div className="text-slate-500 italic">Signage & Branding Works</div>
                       )}
-                      <th className="py-1 px-2 text-right font-bold">Total Tax (₹)</th>
+
+                      {data.projectLocation && (
+                        <div className="text-slate-700 mt-0.5 text-[11px]">
+                          Location: <span className="font-semibold text-slate-900">{data.projectLocation}</span>
+                        </div>
+                      )}
+
+                      {data.siteAddress && (
+                        <div className="text-slate-600 mt-1 leading-relaxed text-[11px]">
+                          <span className="font-semibold text-slate-700">Site Address: </span>
+                          {data.siteAddress}
+                        </div>
+                      )}
+
+                      {data.customerShippingAddress &&
+                        data.customerShippingAddress !== data.customerBillingAddress && (
+                          <div className="text-slate-600 mt-1 leading-relaxed text-[11px]">
+                            <span className="font-semibold text-slate-700">Dispatch / Material Delivery: </span>
+                            {data.customerShippingAddress}
+                          </div>
+                        )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* =========================================================
+                   PAGE 2+ (CONTINUATION SHEETS): RUNNING HEADER
+                   ========================================================= */
+                <div className="pb-3 mb-3 border-b border-slate-200 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg overflow-hidden ring-1 ring-slate-900/10 shadow-sm shrink-0 bg-slate-950 flex items-center justify-center">
+                      <Image
+                        src="/logos/symbol-logo.jpeg"
+                        alt="UG Emblem"
+                        width={40}
+                        height={40}
+                        unoptimized
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-950 text-xs tracking-tight flex items-center gap-2">
+                        <span>ULTIMATE GRAPHICS</span>
+                        <span className="text-slate-300">•</span>
+                        <span className="font-mono text-cyan-800 font-bold">
+                          {data.documentNumber || "DRAFT"}
+                        </span>
+                        <span className="text-slate-300">•</span>
+                        <span className="text-[10px] font-semibold text-slate-500 uppercase">
+                          {docTitle} (Continuation)
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        Client: <strong className="text-slate-700">{data.customerName}</strong>
+                        {data.projectName && <span> • Project: {data.projectName}</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Date: {formatDate(data.issueDate)}
+                    </div>
+                    <div className="text-xs font-bold text-slate-900 font-mono">
+                      Sheet {page.pageNumber} of {totalPages}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* =========================================================
+                  ITEMISED SERVICES TABLE (Current Slice)
+                  ========================================================= */}
+              <div className="pt-2 pb-1">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-950 text-white text-[10px] font-bold uppercase tracking-wider">
+                      <th className="py-2 pl-3 pr-2 w-8 text-center rounded-l">#</th>
+                      <th className="py-2 px-2">Scope of Works & Specifications</th>
+                      <th className="py-2 px-2 text-center w-16">HSN/SAC</th>
+                      <th className="py-2 px-2 text-center w-14">Qty</th>
+                      <th className="py-2 px-2 text-center w-16">Unit</th>
+                      <th className="py-2 px-2 text-right w-20">Rate (₹)</th>
+                      {isTaxInvoice && (
+                        <th className="py-2 px-2 text-center w-14">GST</th>
+                      )}
+                      <th className="py-2 pr-3 pl-2 text-right w-24 rounded-r">Amount (₹)</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 font-mono">
-                    {data.taxSummaries?.map((ts, i) => (
-                      <tr key={i}>
-                        <td className="py-1 px-2 text-slate-800">{ts.hsnSac || "NA"} ({ts.gstRate}%)</td>
-                        <td className="py-1 px-2 text-right">{ts.taxableAmount.toFixed(2)}</td>
-                        {isInterState ? (
-                          <td className="py-1 px-2 text-right">{ts.igstAmount.toFixed(2)}</td>
-                        ) : (
-                          <>
-                            <td className="py-1 px-2 text-right">{ts.cgstAmount.toFixed(2)}</td>
-                            <td className="py-1 px-2 text-right">{ts.sgstAmount.toFixed(2)}</td>
-                          </>
-                        )}
-                        <td className="py-1 px-2 text-right font-bold text-slate-900">{ts.totalTax.toFixed(2)}</td>
+                  <tbody className="divide-y divide-slate-200 text-xs">
+                    {page.items.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={isTaxInvoice ? 8 : 7}
+                          className="py-6 text-center text-slate-400 italic text-xs"
+                        >
+                          {page.isFirstPage
+                            ? "No items added to this document yet."
+                            : "Items continued on previous page."}
+                        </td>
                       </tr>
-                    ))}
+                    ) : (
+                      page.items.map((it, idx) => {
+                        const globalItemIndex = page.startIndex + idx + 1;
+                        return (
+                          <tr key={idx} className="avoid-break align-top hover:bg-slate-50/50">
+                            <td className="py-2.5 pl-3 pr-2 text-center text-slate-500 font-mono text-[11px]">
+                              {globalItemIndex}
+                            </td>
+                            <td className="py-2.5 px-2">
+                              <div className="font-bold text-slate-950 text-[12px]">{it.name}</div>
+                              {it.description && (
+                                <div className="text-[10px] text-slate-600 mt-0.5 leading-relaxed">
+                                  {it.description}
+                                </div>
+                              )}
+                              {(it.dimensions || it.specifications) && (
+                                <div className="text-[9px] text-slate-600 mt-1 bg-slate-50 p-1.5 rounded border border-slate-200/60 flex flex-wrap gap-x-3">
+                                  {it.dimensions && (
+                                    <span>
+                                      <strong className="text-slate-800">Dim:</strong> {it.dimensions}
+                                    </span>
+                                  )}
+                                  {it.specifications && (
+                                    <span>
+                                      <strong className="text-slate-800">Specs:</strong> {it.specifications}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-2 text-center font-mono text-[11px] text-slate-600">
+                              {it.hsnSac || "-"}
+                            </td>
+                            <td className="py-2.5 px-2 text-center font-bold text-slate-950">
+                              {it.quantity}
+                            </td>
+                            <td className="py-2.5 px-2 text-center text-slate-600 text-[11px]">
+                              {it.unit}
+                            </td>
+                            <td className="py-2.5 px-2 text-right font-mono text-slate-900 font-medium">
+                              {it.unitRate.toFixed(2)}
+                            </td>
+                            {isTaxInvoice && (
+                              <td className="py-2.5 px-2 text-center font-mono text-[11px] text-slate-700 font-semibold">
+                                {it.gstRate}%
+                              </td>
+                            )}
+                            <td className="py-2.5 pr-3 pl-2 text-right font-mono font-bold text-slate-950">
+                              {it.taxableAmount.toFixed(2)}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
-            )}
-          </div>
 
-          {/* Right Column: Commercial Financial Calculations */}
-          <div className="col-span-5 space-y-1 text-xs">
-            <div className="flex justify-between py-1 text-slate-600">
-              <span>Subtotal:</span>
-              <span className="font-mono font-semibold text-slate-900">{formatCurrency(data.subtotal)}</span>
+              {/* Continuation Notice at bottom of table if more items follow */}
+              {!page.isLastPage && (
+                <div className="mt-2 p-2 bg-slate-50 rounded border border-slate-200 flex items-center justify-between text-xs text-slate-600">
+                  <span className="font-semibold text-cyan-800 flex items-center gap-1.5">
+                    <span>Continued on Sheet {page.pageNumber + 1}...</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500">
+                    Displaying Items {page.startIndex + 1} to {page.startIndex + page.items.length} of {data.items.length}
+                  </span>
+                </div>
+              )}
+
+              {/* =========================================================
+                  PAGE COMMERCIAL SUMMARY (Only Rendered on Last Page)
+                  ========================================================= */}
+              {page.showCommercialSummary && (
+                <div className="mt-3 pt-3 border-t-2 border-slate-900 space-y-3 avoid-break">
+                  <div className="grid grid-cols-12 gap-5">
+                    {/* Left Column: Amount in Words & HSN Tax Summary */}
+                    <div className="col-span-7 space-y-2.5">
+                      {/* Amount in words */}
+                      <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          Total Invoice Amount in Words
+                        </div>
+                        <div className="font-bold text-slate-950 text-xs mt-0.5 leading-relaxed">
+                          {numberToWordsINR(data.totalAmount)}
+                        </div>
+                      </div>
+
+                      {/* HSN/SAC Tax Summary Table */}
+                      {(isTaxInvoice || (data.taxSummaries && data.taxSummaries.length > 0)) && (
+                        <div className="border border-slate-200 rounded-lg overflow-hidden">
+                          <div className="bg-slate-100 px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-800 flex justify-between">
+                            <span>GST Tax Breakdown (HSN / SAC Wise)</span>
+                            <span className="font-mono text-[9px] text-slate-500">
+                              {isInterState ? "Inter-State (IGST 100%)" : "Intra-State (CGST 50% + SGST 50%)"}
+                            </span>
+                          </div>
+                          <table className="w-full text-[9px] text-left">
+                            <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
+                              <tr>
+                                <th className="py-1 px-2 font-bold">HSN/SAC</th>
+                                <th className="py-1 px-2 text-right font-bold">Taxable (₹)</th>
+                                {isInterState ? (
+                                  <th className="py-1 px-2 text-right font-bold">IGST (₹)</th>
+                                ) : (
+                                  <>
+                                    <th className="py-1 px-2 text-right font-bold">CGST (₹)</th>
+                                    <th className="py-1 px-2 text-right font-bold">SGST (₹)</th>
+                                  </>
+                                )}
+                                <th className="py-1 px-2 text-right font-bold">Total Tax (₹)</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-mono">
+                              {data.taxSummaries?.map((ts, i) => (
+                                <tr key={i}>
+                                  <td className="py-0.5 px-2 text-slate-800">{ts.hsnSac || "NA"} ({ts.gstRate}%)</td>
+                                  <td className="py-0.5 px-2 text-right">{ts.taxableAmount.toFixed(2)}</td>
+                                  {isInterState ? (
+                                    <td className="py-0.5 px-2 text-right">{ts.igstAmount.toFixed(2)}</td>
+                                  ) : (
+                                    <>
+                                      <td className="py-0.5 px-2 text-right">{ts.cgstAmount.toFixed(2)}</td>
+                                      <td className="py-0.5 px-2 text-right">{ts.sgstAmount.toFixed(2)}</td>
+                                    </>
+                                  )}
+                                  <td className="py-0.5 px-2 text-right font-bold text-slate-900">{ts.totalTax.toFixed(2)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right Column: Commercial Financial Calculations */}
+                    <div className="col-span-5 space-y-1 text-xs">
+                      <div className="flex justify-between py-0.5 text-slate-600">
+                        <span>Subtotal:</span>
+                        <span className="font-mono font-semibold text-slate-900">{formatCurrency(data.subtotal)}</span>
+                      </div>
+
+                      {data.discountAmount > 0 && (
+                        <div className="flex justify-between py-0.5 text-rose-600 font-medium">
+                          <span>
+                            Discount {data.discountType === "PERCENTAGE" ? `(${data.discountValue}%)` : ""}:
+                          </span>
+                          <span className="font-mono">-{formatCurrency(data.discountAmount)}</span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between py-0.5 text-slate-800 font-bold border-t border-slate-200">
+                        <span>Taxable Value:</span>
+                        <span className="font-mono">{formatCurrency(data.taxableAmount)}</span>
+                      </div>
+
+                      {isInterState ? (
+                        <div className="flex justify-between py-0.5 text-slate-600 text-[11px]">
+                          <span>Integrated GST (IGST):</span>
+                          <span className="font-mono font-medium">{formatCurrency(data.igstAmount)}</span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex justify-between py-0.5 text-slate-600 text-[11px]">
+                            <span>Central GST (CGST):</span>
+                            <span className="font-mono font-medium">{formatCurrency(data.cgstAmount)}</span>
+                          </div>
+                          <div className="flex justify-between py-0.5 text-slate-600 text-[11px]">
+                            <span>State GST (SGST):</span>
+                            <span className="font-mono font-medium">{formatCurrency(data.sgstAmount)}</span>
+                          </div>
+                        </>
+                      )}
+
+                      {data.roundOff !== 0 && (
+                        <div className="flex justify-between py-0.5 text-slate-500 text-[10px]">
+                          <span>Round Off:</span>
+                          <span className="font-mono">
+                            {data.roundOff > 0 ? `+${data.roundOff.toFixed(2)}` : data.roundOff.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Total Grand Presentation */}
+                      <div className="mt-1 p-2.5 bg-slate-950 text-white rounded-lg flex justify-between items-center shadow-md">
+                        <span className="font-black text-xs tracking-wider uppercase">
+                          Grand Total:
+                        </span>
+                        <span className="font-mono font-black text-lg text-cyan-400">
+                          {formatCurrency(data.totalAmount)}
+                        </span>
+                      </div>
+
+                      {/* Advance / Balance presentation if applicable */}
+                      {((data.amountReceived ?? 0) > 0 || Boolean(data.advanceAmount)) && (
+                        <div className="pt-1.5 space-y-0.5 text-xs border-t border-slate-200">
+                          {Boolean(data.advanceAmount) && (
+                            <div className="flex justify-between text-slate-600 text-[11px]">
+                              <span>Advance Required:</span>
+                              <span className="font-mono font-semibold">{formatCurrency(data.advanceAmount)}</span>
+                            </div>
+                          )}
+                          {(data.amountReceived ?? 0) > 0 && (
+                            <div className="flex justify-between text-emerald-600 font-bold text-[11px]">
+                              <span>Amount Received:</span>
+                              <span className="font-mono">{formatCurrency(data.amountReceived)}</span>
+                            </div>
+                          )}
+                          {data.balanceDue !== undefined && (
+                            <div className="flex justify-between text-slate-900 font-bold pt-1 border-t border-slate-200">
+                              <span>Balance Due:</span>
+                              <span className="font-mono text-rose-600">{formatCurrency(data.balanceDue)}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* BANK DETAILS, UPI QR & TERMS SECTION */}
+                  <div className="pt-2 border-t border-slate-200 grid grid-cols-12 gap-4 text-xs avoid-break">
+                    {/* Bank & Payment Information */}
+                    <div className="col-span-8 flex gap-3.5 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                      {qrCodeUrl && (
+                        <div className="flex flex-col items-center justify-center p-1.5 bg-white rounded border border-slate-200 shrink-0 shadow-sm">
+                          <Image
+                            src={qrCodeUrl}
+                            alt="UPI Payment QR"
+                            width={76}
+                            height={76}
+                            unoptimized
+                            className="w-16 h-16 object-contain"
+                          />
+                          <div className="text-[7px] font-black text-slate-700 uppercase tracking-widest mt-1">
+                            Scan to Pay
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="space-y-0.5">
+                        <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">
+                          Bank Transfer & UPI Settlement Details
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
+                          <div>
+                            <span className="text-slate-500">Bank: </span>
+                            <span className="font-bold text-slate-900">{bank.bankName}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500">A/C Holder: </span>
+                            <span className="font-semibold text-slate-900">{bank.accountHolder}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500">A/C No: </span>
+                            <span className="font-mono font-bold text-slate-900">{bank.accountNumber}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500">IFSC: </span>
+                            <span className="font-mono font-bold text-slate-900">{bank.ifsc}</span>
+                          </div>
+                          <div className="col-span-2 pt-0.5">
+                            <span className="text-slate-500">Branch: </span>
+                            <span className="text-slate-800">{bank.branch}</span>
+                          </div>
+                          {upi.upiId && (
+                            <div className="col-span-2 pt-0.5 font-semibold text-slate-900">
+                              <span className="text-slate-500">UPI ID: </span>
+                              <span className="font-mono text-cyan-700 font-bold">{upi.upiId}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Authorised Signature Block */}
+                    <div className="col-span-4 flex flex-col justify-between items-center text-center p-2">
+                      <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                        For {company.legalName}
+                      </div>
+
+                      <div className="h-10 flex items-center justify-center">
+                        <div className="text-slate-300 italic text-[10px] font-serif border-b border-dashed border-slate-300 px-6 py-0.5">
+                          Authorised Signatory
+                        </div>
+                      </div>
+
+                      <div className="text-[9px] text-slate-600 font-medium">
+                        Authorised Representative
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* TERMS AND CONDITIONS */}
+                  <div className="pt-2 border-t border-slate-100 text-[9px] text-slate-500 leading-relaxed avoid-break">
+                    <div className="font-bold text-slate-700 uppercase tracking-wider mb-0.5">
+                      Terms & Commercial Conditions:
+                    </div>
+                    <div className="whitespace-pre-line text-slate-600">
+                      {data.termsAndConditions ||
+                        "1. Goods/Services once delivered & accepted cannot be returned.\n2. Warranty on LED modules and power supplies: 1 Year against manufacturing defects.\n3. All disputes are subject to local judicial jurisdiction."}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {data.discountAmount > 0 && (
-              <div className="flex justify-between py-1 text-rose-600 font-medium">
-                <span>
-                  Discount {data.discountType === "PERCENTAGE" ? `(${data.discountValue}%)` : ""}:
-                </span>
-                <span className="font-mono">-{formatCurrency(data.discountAmount)}</span>
-              </div>
-            )}
-
-            <div className="flex justify-between py-1 text-slate-800 font-bold border-t border-slate-200">
-              <span>Taxable Value:</span>
-              <span className="font-mono">{formatCurrency(data.taxableAmount)}</span>
-            </div>
-
-            {isInterState ? (
-              <div className="flex justify-between py-0.5 text-slate-600">
-                <span>Integrated GST (IGST):</span>
-                <span className="font-mono font-medium">{formatCurrency(data.igstAmount)}</span>
-              </div>
-            ) : (
-              <>
-                <div className="flex justify-between py-0.5 text-slate-600">
-                  <span>Central GST (CGST):</span>
-                  <span className="font-mono font-medium">{formatCurrency(data.cgstAmount)}</span>
-                </div>
-                <div className="flex justify-between py-0.5 text-slate-600">
-                  <span>State GST (SGST):</span>
-                  <span className="font-mono font-medium">{formatCurrency(data.sgstAmount)}</span>
-                </div>
-              </>
-            )}
-
-            {data.roundOff !== 0 && (
-              <div className="flex justify-between py-0.5 text-slate-500 text-[11px]">
-                <span>Round Off:</span>
-                <span className="font-mono">
-                  {data.roundOff > 0 ? `+${data.roundOff.toFixed(2)}` : data.roundOff.toFixed(2)}
-                </span>
-              </div>
-            )}
-
-            {/* Total Grand Presentation */}
-            <div className="mt-2 p-3 bg-slate-950 text-white rounded-lg flex justify-between items-center shadow-md">
-              <span className="font-black text-xs tracking-wider uppercase">
-                Grand Total:
+            {/* =========================================================
+                PAGE FOOTER ACCENT BAR
+                ========================================================= */}
+            <div className="pt-3 mt-auto border-t border-slate-200 text-center text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Ultimate Graphics • Architectural Signage, CNC Fabrication & Commercial Print</span>
+              <span className="font-semibold text-slate-600">
+                Sheet {page.pageNumber} of {totalPages}
               </span>
-              <span className="font-mono font-black text-xl text-cyan-400">
-                {formatCurrency(data.totalAmount)}
-              </span>
-            </div>
-
-            {/* Advance / Balance presentation if applicable */}
-            {((data.amountReceived ?? 0) > 0 || Boolean(data.advanceAmount)) && (
-              <div className="pt-2 space-y-1 text-xs border-t border-slate-200">
-                {Boolean(data.advanceAmount) && (
-                  <div className="flex justify-between text-slate-600">
-                    <span>Advance Required:</span>
-                    <span className="font-mono font-semibold">{formatCurrency(data.advanceAmount)}</span>
-                  </div>
-                )}
-                {(data.amountReceived ?? 0) > 0 && (
-                  <div className="flex justify-between text-emerald-600 font-bold">
-                    <span>Amount Received:</span>
-                    <span className="font-mono">{formatCurrency(data.amountReceived)}</span>
-                  </div>
-                )}
-                {data.balanceDue !== undefined && (
-                  <div className="flex justify-between text-slate-900 font-bold pt-1 border-t border-slate-200">
-                    <span>Balance Due:</span>
-                    <span className="font-mono text-rose-600">{formatCurrency(data.balanceDue)}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* BANK DETAILS, UPI QR & TERMS SECTION */}
-        <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-12 gap-5 text-xs avoid-break">
-          {/* Bank & Payment Information */}
-          <div className="col-span-8 flex gap-4 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
-            {qrCodeUrl && (
-              <div className="flex flex-col items-center justify-center p-2 bg-white rounded border border-slate-200 shrink-0 shadow-sm">
-                <Image
-                  src={qrCodeUrl}
-                  alt="UPI Payment QR"
-                  width={90}
-                  height={90}
-                  unoptimized
-                  className="w-20 h-20 object-contain"
-                />
-                <div className="text-[8px] font-black text-slate-700 uppercase tracking-widest mt-1">
-                  Scan to Pay
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-0.5">
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                Bank Transfer & UPI Settlement Details
-              </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px]">
-                <div>
-                  <span className="text-slate-500">Bank: </span>
-                  <span className="font-bold text-slate-900">{bank.bankName}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500">A/C Holder: </span>
-                  <span className="font-semibold text-slate-900">{bank.accountHolder}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500">A/C No: </span>
-                  <span className="font-mono font-bold text-slate-900">{bank.accountNumber}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500">IFSC: </span>
-                  <span className="font-mono font-bold text-slate-900">{bank.ifsc}</span>
-                </div>
-                <div className="col-span-2 pt-0.5">
-                  <span className="text-slate-500">Branch: </span>
-                  <span className="text-slate-800">{bank.branch}</span>
-                </div>
-                {upi.upiId && (
-                  <div className="col-span-2 pt-1 font-semibold text-slate-900">
-                    <span className="text-slate-500">UPI ID: </span>
-                    <span className="font-mono text-cyan-700 font-bold">{upi.upiId}</span>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
-
-          {/* Authorised Signature Block */}
-          <div className="col-span-4 flex flex-col justify-between items-center text-center p-2">
-            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-              For {company.legalName}
-            </div>
-
-            <div className="h-12 flex items-center justify-center">
-              <div className="text-slate-300 italic text-[11px] font-serif border-b border-dashed border-slate-300 px-6 py-0.5">
-                Authorised Signatory
-              </div>
-            </div>
-
-            <div className="text-[10px] text-slate-600 font-medium">
-              Authorised Representative
-            </div>
-          </div>
-        </div>
-
-        {/* TERMS AND CONDITIONS */}
-        <div className="mt-4 pt-3 border-t border-slate-100 text-[10px] text-slate-500 leading-relaxed avoid-break">
-          <div className="font-bold text-slate-700 uppercase tracking-wider mb-0.5">
-            Terms & Commercial Conditions:
-          </div>
-          <div className="whitespace-pre-line text-slate-600">
-            {data.termsAndConditions ||
-              "1. Goods/Services once delivered & accepted cannot be returned.\n2. Warranty on LED modules and power supplies: 1 Year against manufacturing defects.\n3. All disputes are subject to local judicial jurisdiction."}
-          </div>
-        </div>
-      </div>
-
-      {/* FOOTER ACCENT BAR */}
-      <div className="pt-4 mt-4 border-t border-slate-200 text-center text-[10px] text-slate-400 flex items-center justify-between">
-        <span>Ultimate Graphics • Architectural Signage, CNC Fabrication & Commercial Print</span>
-        <span>Generated via Ultimate Graphics Billing Management System</span>
-      </div>
+        );
+      })}
     </div>
   );
 }
