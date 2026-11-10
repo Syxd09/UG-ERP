@@ -1,0 +1,633 @@
+"use client";
+
+import React, { useEffect, useState } from "react";
+import Image from "next/image";
+import QRCode from "qrcode";
+import { formatCurrency, formatDate, numberToWordsINR } from "@/lib/utils";
+import { CalculatedItem, TaxSummaryBreakdown } from "@/services/calculations/tax-engine";
+
+export interface InvoiceDocumentData {
+  documentType: "QUOTATION" | "PROFORMA_INVOICE" | "TAX_INVOICE";
+  documentNumber: string;
+  issueDate: string | Date;
+  dueDate?: string | Date | null;
+  validityDate?: string | Date | null;
+  referenceNo?: string | null;
+  projectName?: string | null;
+  projectLocation?: string | null;
+  siteAddress?: string | null;
+
+  customerName: string;
+  customerContactPerson?: string | null;
+  customerEmail?: string | null;
+  customerPhone?: string | null;
+  customerGstin?: string | null;
+  customerBillingAddress: string;
+  customerShippingAddress?: string | null;
+  placeOfSupplyState: string;
+  placeOfSupplyCode: string;
+  isInterState: boolean;
+
+  items: CalculatedItem[];
+  subtotal: number;
+  discountType: "PERCENTAGE" | "FIXED";
+  discountValue: number;
+  discountAmount: number;
+  taxableAmount: number;
+  cgstAmount: number;
+  sgstAmount: number;
+  igstAmount: number;
+  totalTaxAmount: number;
+  roundOff: number;
+  totalAmount: number;
+
+  advancePercentage?: number | null;
+  advanceAmount?: number | null;
+  amountReceived?: number;
+  balanceDue?: number;
+
+  paymentTerms?: string | null;
+  notes?: string | null;
+  termsAndConditions?: string | null;
+
+  companySnapshot?: {
+    name?: string;
+    legalName?: string;
+    tagline?: string;
+    gstin?: string;
+    pan?: string;
+    state?: string;
+    stateCode?: string;
+    email?: string;
+    phone?: string;
+    website?: string;
+    address?: string;
+    city?: string;
+    pincode?: string;
+    logoUrl?: string;
+    symbolLogoUrl?: string;
+  } | null;
+
+  bankSnapshot?: {
+    accountHolder?: string;
+    bankName?: string;
+    accountNumber?: string;
+    ifsc?: string;
+    branch?: string;
+  } | null;
+
+  upiSnapshot?: {
+    upiId?: string;
+    payeeName?: string;
+    qrCodeUrl?: string;
+  } | null;
+
+  taxSummaries?: TaxSummaryBreakdown[];
+}
+
+interface InvoiceDocumentProps {
+  data: InvoiceDocumentData;
+}
+
+export function InvoiceDocument({ data }: InvoiceDocumentProps) {
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+
+  const company = data.companySnapshot || {
+    name: "Ultimate Graphics",
+    legalName: "Ultimate Graphics Signage & Fabrication",
+    tagline: "Signage • Printing • Branding • Fabrication",
+    gstin: "29AABCU9603R1ZM",
+    state: "Karnataka",
+    stateCode: "29",
+    email: "billing@ultimategraphics.com",
+    phone: "+91 98860 12345",
+    website: "https://ultimategraphics.com",
+    address: "Plot 42, 3rd Phase, Peenya Industrial Area",
+    city: "Bengaluru",
+    pincode: "560058",
+    logoUrl: "/logos/main-logo.png",
+  };
+
+  const bank = data.bankSnapshot || {
+    accountHolder: "Ultimate Graphics",
+    bankName: "HDFC Bank Ltd",
+    accountNumber: "50200012345678",
+    ifsc: "HDFC0000142",
+    branch: "Peenya Industrial Area, Bengaluru",
+  };
+
+  const upi = data.upiSnapshot || {
+    upiId: "ultimategraphics@hdfcbank",
+    payeeName: "Ultimate Graphics",
+  };
+
+  // Generate genuine UPI QR Code
+  useEffect(() => {
+    if (upi.upiId) {
+      const upiUrl = `upi://pay?pa=${encodeURIComponent(upi.upiId)}&pn=${encodeURIComponent(
+        upi.payeeName || "Ultimate Graphics"
+      )}&am=${encodeURIComponent(
+        (data.balanceDue && data.balanceDue > 0 ? data.balanceDue : data.totalAmount).toFixed(2)
+      )}&cu=INR&tn=${encodeURIComponent(data.documentNumber || "Bill Payment")}`;
+
+      QRCode.toDataURL(upiUrl, {
+        width: 160,
+        margin: 1,
+        color: {
+          dark: "#0F172A",
+          light: "#FFFFFF",
+        },
+      })
+        .then(setQrCodeUrl)
+        .catch((e) => console.error("Error generating QR", e));
+    }
+  }, [upi.upiId, upi.payeeName, data.totalAmount, data.balanceDue, data.documentNumber]);
+
+  const docTitle =
+    data.documentType === "QUOTATION"
+      ? "QUOTATION"
+      : data.documentType === "PROFORMA_INVOICE"
+      ? "PROFORMA INVOICE"
+      : "TAX INVOICE";
+
+  const isQuotation = data.documentType === "QUOTATION";
+  const isTaxInvoice = data.documentType === "TAX_INVOICE";
+  const isInterState = data.isInterState;
+
+  return (
+    <div className="a4-sheet bg-white text-slate-900 mx-auto relative shadow-2xl print:shadow-none p-10 flex flex-col justify-between font-sans leading-normal select-text">
+      {/* Restrained Brand Gradient Corner Header Element */}
+      <div className="absolute top-0 right-0 w-64 h-2 bg-gradient-to-r from-cyan-400 via-rose-500 to-orange-400 rounded-bl-sm" />
+      <div className="absolute top-0 left-0 w-24 h-1 bg-gradient-to-r from-cyan-400 to-cyan-500" />
+
+      {/* Main Document Content Container */}
+      <div>
+        {/* HEADER SECTION: LOGO + METADATA */}
+        <div className="flex justify-between items-start pb-6 border-b border-slate-200">
+          <div>
+            <div className="mb-2">
+              <Image
+                src="/logos/main-logo.png"
+                alt="Ultimate Graphics"
+                width={210}
+                height={55}
+                priority
+                className="h-11 w-auto object-contain"
+              />
+            </div>
+            <div className="text-[11px] text-slate-600 space-y-0.5 mt-2">
+              <div className="font-semibold text-slate-900">{company.legalName}</div>
+              <div>{company.address}, {company.city} - {company.pincode}</div>
+              <div>
+                State: <span className="font-medium text-slate-800">{company.state}</span> (Code:{" "}
+                <span className="font-medium text-slate-800">{company.stateCode}</span>)
+              </div>
+              <div className="flex items-center gap-3 pt-0.5">
+                <span>Tel: {company.phone}</span>
+                <span>•</span>
+                <span>{company.email}</span>
+              </div>
+              {company.gstin && (
+                <div className="pt-1">
+                  <span className="font-bold text-slate-900">GSTIN: </span>
+                  <span className="font-mono font-semibold tracking-wider text-slate-900">
+                    {company.gstin}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Document Title & Reference Block */}
+          <div className="text-right">
+            <div className="inline-block">
+              <h1 className="text-2xl font-black tracking-wider text-slate-950 uppercase">
+                {docTitle}
+              </h1>
+              <div className="h-0.5 w-full bg-gradient-to-r from-cyan-400 via-rose-500 to-orange-400 mt-1" />
+            </div>
+
+            <div className="mt-4 text-xs space-y-1.5 font-medium">
+              <div className="flex justify-end gap-3">
+                <span className="text-slate-500">
+                  {isQuotation ? "Quotation No:" : isTaxInvoice ? "Invoice No:" : "Proforma No:"}
+                </span>
+                <span className="font-mono font-bold text-slate-900 text-sm">
+                  {data.documentNumber || "DRAFT"}
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <span className="text-slate-500">Date:</span>
+                <span className="text-slate-900 font-semibold">
+                  {formatDate(data.issueDate)}
+                </span>
+              </div>
+
+              {data.validityDate && (
+                <div className="flex justify-end gap-3">
+                  <span className="text-slate-500">Valid Until:</span>
+                  <span className="text-slate-900">{formatDate(data.validityDate)}</span>
+                </div>
+              )}
+
+              {data.dueDate && !data.validityDate && (
+                <div className="flex justify-end gap-3">
+                  <span className="text-slate-500">Due Date:</span>
+                  <span className="text-slate-900">{formatDate(data.dueDate)}</span>
+                </div>
+              )}
+
+              {data.referenceNo && (
+                <div className="flex justify-end gap-3">
+                  <span className="text-slate-500">Ref / PO No:</span>
+                  <span className="text-slate-900 font-mono">{data.referenceNo}</span>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-1 text-[11px]">
+                <span className="text-slate-500">Place of Supply:</span>
+                <span className="text-slate-900 font-semibold">
+                  {data.placeOfSupplyState} ({data.placeOfSupplyCode})
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* BILLED TO / SHIPPED TO / PROJECT INFORMATION */}
+        <div className="grid grid-cols-2 gap-8 py-5 text-xs border-b border-slate-200">
+          <div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+              Billed To
+            </div>
+            <div className="font-bold text-slate-900 text-sm">
+              {data.customerName || "Customer Name"}
+            </div>
+            {data.customerContactPerson && (
+              <div className="text-slate-700 font-medium mt-0.5">
+                Attn: {data.customerContactPerson}
+              </div>
+            )}
+            <div className="text-slate-600 mt-1 whitespace-pre-line leading-relaxed">
+              {data.customerBillingAddress}
+            </div>
+            <div className="text-slate-600 mt-1 flex flex-wrap gap-x-3">
+              {data.customerPhone && <span>Ph: {data.customerPhone}</span>}
+              {data.customerEmail && <span>{data.customerEmail}</span>}
+            </div>
+            {data.customerGstin && (
+              <div className="mt-2 text-slate-900 font-semibold">
+                GSTIN: <span className="font-mono text-xs">{data.customerGstin}</span>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+              Project & Site Execution
+            </div>
+            {data.projectName ? (
+              <div className="font-bold text-slate-900 text-sm">
+                {data.projectName}
+              </div>
+            ) : (
+              <div className="text-slate-500 italic">Signage & Branding Works</div>
+            )}
+
+            {data.projectLocation && (
+              <div className="text-slate-700 mt-0.5">
+                Location: <span className="font-medium">{data.projectLocation}</span>
+              </div>
+            )}
+
+            {data.siteAddress && (
+              <div className="text-slate-600 mt-1 leading-relaxed">
+                <span className="font-medium text-slate-700">Site Address: </span>
+                {data.siteAddress}
+              </div>
+            )}
+
+            {data.customerShippingAddress &&
+              data.customerShippingAddress !== data.customerBillingAddress && (
+                <div className="text-slate-600 mt-1 leading-relaxed">
+                  <span className="font-medium text-slate-700">Dispatch To: </span>
+                  {data.customerShippingAddress}
+                </div>
+              )}
+          </div>
+        </div>
+
+        {/* ITEMISED TABLE */}
+        <div className="pt-4 pb-2">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b-2 border-slate-900 text-[10px] font-bold uppercase tracking-wider text-slate-900">
+                <th className="py-2.5 pr-2 w-8 text-center">#</th>
+                <th className="py-2.5 px-2">Description & Specifications</th>
+                <th className="py-2.5 px-2 text-center w-16">HSN/SAC</th>
+                <th className="py-2.5 px-2 text-center w-14">Qty</th>
+                <th className="py-2.5 px-2 text-center w-14">Unit</th>
+                <th className="py-2.5 px-2 text-right w-20">Rate (₹)</th>
+                {isTaxInvoice && (
+                  <th className="py-2.5 px-2 text-center w-14">GST</th>
+                )}
+                <th className="py-2.5 pl-2 text-right w-24">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-xs">
+              {data.items.length === 0 ? (
+                <tr>
+                  <td colSpan={isTaxInvoice ? 8 : 7} className="py-8 text-center text-slate-400 italic">
+                    No items added to this document yet.
+                  </td>
+                </tr>
+              ) : (
+                data.items.map((it, idx) => (
+                  <tr key={idx} className="avoid-break align-top">
+                    <td className="py-3 pr-2 text-center text-slate-500 font-mono text-[11px]">
+                      {idx + 1}
+                    </td>
+                    <td className="py-3 px-2">
+                      <div className="font-bold text-slate-900">{it.name}</div>
+                      {it.description && (
+                        <div className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
+                          {it.description}
+                        </div>
+                      )}
+                      {(it.dimensions || it.specifications) && (
+                        <div className="text-[10px] text-slate-500 mt-1 bg-slate-50 p-1.5 rounded border border-slate-100 flex flex-wrap gap-x-3">
+                          {it.dimensions && (
+                            <span>
+                              <strong className="text-slate-700">Dim:</strong> {it.dimensions}
+                            </span>
+                          )}
+                          {it.specifications && (
+                            <span>
+                              <strong className="text-slate-700">Specs:</strong> {it.specifications}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-3 px-2 text-center font-mono text-[11px] text-slate-600">
+                      {it.hsnSac || "-"}
+                    </td>
+                    <td className="py-3 px-2 text-center font-semibold text-slate-900">
+                      {it.quantity}
+                    </td>
+                    <td className="py-3 px-2 text-center text-slate-600 text-[11px]">
+                      {it.unit}
+                    </td>
+                    <td className="py-3 px-2 text-right font-mono text-slate-800">
+                      {it.unitRate.toFixed(2)}
+                    </td>
+                    {isTaxInvoice && (
+                      <td className="py-3 px-2 text-center font-mono text-[11px] text-slate-700">
+                        {it.gstRate}%
+                      </td>
+                    )}
+                    <td className="py-3 pl-2 text-right font-mono font-bold text-slate-900">
+                      {it.taxableAmount.toFixed(2)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* TOTALS & TAX BREAKDOWN */}
+        <div className="pt-4 border-t-2 border-slate-900 grid grid-cols-12 gap-6 avoid-break">
+          {/* Left Column: Amount in Words & HSN Tax Summary */}
+          <div className="col-span-7 space-y-4">
+            {/* Amount in words */}
+            <div className="bg-slate-50 p-3 rounded border border-slate-200">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Total Amount in Words
+              </div>
+              <div className="font-bold text-slate-900 text-xs mt-0.5 leading-relaxed">
+                {numberToWordsINR(data.totalAmount)}
+              </div>
+            </div>
+
+            {/* HSN/SAC Tax Summary Table (For Tax Invoices & Proformas) */}
+            {(isTaxInvoice || data.taxSummaries?.length) && (
+              <div className="border border-slate-200 rounded overflow-hidden">
+                <div className="bg-slate-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-700">
+                  GST Tax Breakdown (HSN / SAC Wise)
+                </div>
+                <table className="w-full text-[10px] text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                    <tr>
+                      <th className="py-1 px-2 font-semibold">HSN/SAC</th>
+                      <th className="py-1 px-2 text-right font-semibold">Taxable (₹)</th>
+                      {isInterState ? (
+                        <th className="py-1 px-2 text-right font-semibold">IGST (₹)</th>
+                      ) : (
+                        <>
+                          <th className="py-1 px-2 text-right font-semibold">CGST (₹)</th>
+                          <th className="py-1 px-2 text-right font-semibold">SGST (₹)</th>
+                        </>
+                      )}
+                      <th className="py-1 px-2 text-right font-semibold">Total Tax (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-mono">
+                    {data.taxSummaries?.map((ts, i) => (
+                      <tr key={i}>
+                        <td className="py-1 px-2 text-slate-700">{ts.hsnSac || "NA"} ({ts.gstRate}%)</td>
+                        <td className="py-1 px-2 text-right">{ts.taxableAmount.toFixed(2)}</td>
+                        {isInterState ? (
+                          <td className="py-1 px-2 text-right">{ts.igstAmount.toFixed(2)}</td>
+                        ) : (
+                          <>
+                            <td className="py-1 px-2 text-right">{ts.cgstAmount.toFixed(2)}</td>
+                            <td className="py-1 px-2 text-right">{ts.sgstAmount.toFixed(2)}</td>
+                          </>
+                        )}
+                        <td className="py-1 px-2 text-right font-semibold">{ts.totalTax.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Right Column: Commercial Financial Calculations */}
+          <div className="col-span-5 space-y-1.5 text-xs">
+            <div className="flex justify-between py-1 text-slate-600">
+              <span>Subtotal:</span>
+              <span className="font-mono font-medium">{formatCurrency(data.subtotal)}</span>
+            </div>
+
+            {data.discountAmount > 0 && (
+              <div className="flex justify-between py-1 text-rose-600">
+                <span>
+                  Discount {data.discountType === "PERCENTAGE" ? `(${data.discountValue}%)` : ""}:
+                </span>
+                <span className="font-mono font-medium">-{formatCurrency(data.discountAmount)}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between py-1 text-slate-700 font-semibold border-t border-slate-200">
+              <span>Taxable Value:</span>
+              <span className="font-mono">{formatCurrency(data.taxableAmount)}</span>
+            </div>
+
+            {isInterState ? (
+              <div className="flex justify-between py-1 text-slate-600">
+                <span>Integrated GST (IGST):</span>
+                <span className="font-mono">{formatCurrency(data.igstAmount)}</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-between py-0.5 text-slate-600">
+                  <span>Central GST (CGST):</span>
+                  <span className="font-mono">{formatCurrency(data.cgstAmount)}</span>
+                </div>
+                <div className="flex justify-between py-0.5 text-slate-600">
+                  <span>State GST (SGST):</span>
+                  <span className="font-mono">{formatCurrency(data.sgstAmount)}</span>
+                </div>
+              </>
+            )}
+
+            {data.roundOff !== 0 && (
+              <div className="flex justify-between py-1 text-slate-500 text-[11px]">
+                <span>Round Off:</span>
+                <span className="font-mono">
+                  {data.roundOff > 0 ? `+${data.roundOff.toFixed(2)}` : data.roundOff.toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            {/* Total Grand Presentation */}
+            <div className="mt-2 p-3 bg-slate-950 text-white rounded-lg flex justify-between items-center shadow-md">
+              <span className="font-bold text-sm tracking-wider uppercase">
+                Grand Total:
+              </span>
+              <span className="font-mono font-black text-xl text-cyan-400">
+                {formatCurrency(data.totalAmount)}
+              </span>
+            </div>
+
+            {/* Advance / Balance presentation if applicable */}
+            {((data.amountReceived ?? 0) > 0 || Boolean(data.advanceAmount)) && (
+              <div className="pt-2 space-y-1 text-xs border-t border-slate-200">
+                {Boolean(data.advanceAmount) && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Advance Required:</span>
+                    <span className="font-mono">{formatCurrency(data.advanceAmount)}</span>
+                  </div>
+                )}
+                {(data.amountReceived ?? 0) > 0 && (
+                  <div className="flex justify-between text-emerald-600 font-semibold">
+                    <span>Amount Received:</span>
+                    <span className="font-mono">{formatCurrency(data.amountReceived)}</span>
+                  </div>
+                )}
+                {data.balanceDue !== undefined && (
+                  <div className="flex justify-between text-slate-900 font-bold pt-1 border-t border-slate-200">
+                    <span>Balance Due:</span>
+                    <span className="font-mono text-rose-600">{formatCurrency(data.balanceDue)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* BANK DETAILS, UPI QR & TERMS SECTION */}
+        <div className="mt-6 pt-5 border-t border-slate-200 grid grid-cols-12 gap-6 text-xs avoid-break">
+          {/* Bank & Payment Information */}
+          <div className="col-span-8 flex gap-5 bg-slate-50 p-4 rounded-lg border border-slate-200">
+            {qrCodeUrl && (
+              <div className="flex flex-col items-center justify-center p-2 bg-white rounded border border-slate-200 shrink-0">
+                <Image
+                  src={qrCodeUrl}
+                  alt="UPI Payment QR"
+                  width={100}
+                  height={100}
+                  className="w-24 h-24 object-contain"
+                />
+                <div className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mt-1">
+                  Scan to Pay
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                Bank Transfer & UPI Details
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px]">
+                <div>
+                  <span className="text-slate-500">Bank: </span>
+                  <span className="font-bold text-slate-900">{bank.bankName}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">A/C Holder: </span>
+                  <span className="font-semibold text-slate-900">{bank.accountHolder}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">A/C No: </span>
+                  <span className="font-mono font-bold text-slate-900">{bank.accountNumber}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">IFSC: </span>
+                  <span className="font-mono font-bold text-slate-900">{bank.ifsc}</span>
+                </div>
+                <div className="col-span-2 pt-0.5">
+                  <span className="text-slate-500">Branch: </span>
+                  <span className="text-slate-800">{bank.branch}</span>
+                </div>
+                {upi.upiId && (
+                  <div className="col-span-2 pt-1 font-semibold text-slate-900">
+                    <span className="text-slate-500">UPI ID: </span>
+                    <span className="font-mono text-cyan-700">{upi.upiId}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Authorised Signature Block */}
+          <div className="col-span-4 flex flex-col justify-between items-center text-center p-3">
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              For {company.legalName}
+            </div>
+
+            <div className="h-14 flex items-center justify-center">
+              <div className="text-slate-300 italic text-[11px] font-serif border-b border-dashed border-slate-300 px-6 py-1">
+                Authorised Signatory
+              </div>
+            </div>
+
+            <div className="text-[10px] text-slate-500">
+              Authorised Representative
+            </div>
+          </div>
+        </div>
+
+        {/* TERMS AND CONDITIONS */}
+        <div className="mt-5 pt-3 border-t border-slate-100 text-[10px] text-slate-500 leading-relaxed avoid-break">
+          <div className="font-bold text-slate-700 uppercase tracking-wider mb-1">
+            Terms & Commercial Conditions:
+          </div>
+          <div className="whitespace-pre-line text-slate-600">
+            {data.termsAndConditions ||
+              "1. Goods/Services once delivered & accepted cannot be returned.\n2. Warranty on LED modules and power supplies: 1 Year against manufacturing defects.\n3. All disputes are subject to local judicial jurisdiction."}
+          </div>
+        </div>
+      </div>
+
+      {/* FOOTER ACCENT BAR */}
+      <div className="pt-6 mt-6 border-t border-slate-200 text-center text-[10px] text-slate-400 flex items-center justify-between">
+        <span>Ultimate Graphics • Architectural Signage, CNC Fabrication & Commercial Print</span>
+        <span>Generated via Ultimate Graphics Billing Management System</span>
+      </div>
+    </div>
+  );
+}
